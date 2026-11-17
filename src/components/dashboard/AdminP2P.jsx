@@ -52,6 +52,7 @@ function AdminP2P() {
   const [issues, setIssues] = useState([])
   const [users, setUsers] = useState([])
   const [visibleAds, setVisibleAds] = useState([])
+  const [allAds, setAllAds] = useState([])
   const [limitEdits, setLimitEdits] = useState({})
   const [adForm, setAdForm] = useState({ id: '', type: 'bank', account: '', name: '', status: 'active' })
   const [issueForm, setIssueForm] = useState({ type: 'mint', userId: '', amount: '', note: '' })
@@ -125,12 +126,36 @@ function AdminP2P() {
     }
   }
 
+  // Hidden ads (bots without a payout account) only show up through the admin list
+  const loadAllAds = async () => {
+    try {
+      const response = await axios.get('/api/admin/p2p/ads')
+      setAllAds(response.data || [])
+    } catch (err) {
+      setAllAds([])
+    }
+  }
+
+  const pickAd = (id) => {
+    const ad = allAds.find((item) => item.id === id)
+    const method = ad?.paymentMethods?.[0]
+    setAdForm((prev) => ({
+      ...prev,
+      id,
+      type: method?.type || prev.type,
+      account: method?.account || '',
+      name: method?.name || '',
+      status: ad?.status || prev.status,
+    }))
+  }
+
   useEffect(() => {
     loadStats()
     loadSupply()
     loadIssues()
     loadUsers()
     loadVisibleAds()
+    loadAllAds()
   }, [])
 
   useEffect(() => {
@@ -209,6 +234,7 @@ function AdminP2P() {
       })
       setNotice(`Ad ${id} updated`)
       await loadVisibleAds()
+      await loadAllAds()
     })
   }
 
@@ -396,17 +422,18 @@ function AdminP2P() {
           <div className={card}>
             <h3 className="text-xl font-bold mb-2">Ads</h3>
             <p className="text-sm text-gray-400 mb-4">
-              Bot ads stay hidden from the public list until a payment account is configured. Enter the ad id
-              from the merchant page or database; use the list below to look up ids for visible ads.
+              Adverts without a payout account stay hidden from users. Pick an ad below, fill in the account users
+              should pay, and save. Bot ads need this once before they can trade.
             </p>
             <form onSubmit={saveAd} className="grid grid-cols-1 md:grid-cols-5 gap-3">
-              <input
-                value={adForm.id}
-                onChange={(e) => setAdForm({ ...adForm, id: e.target.value })}
-                className={input}
-                placeholder="Ad id"
-                required
-              />
+              <select value={adForm.id} onChange={(e) => pickAd(e.target.value)} className={input} required>
+                <option value="">Select ad</option>
+                {allAds.map((ad) => (
+                  <option key={ad.id} value={ad.id}>
+                    {ad.merchant} · {ad.side} · {fmt(ad.price, 2)} {ad.fiat} · {ad.status}
+                  </option>
+                ))}
+              </select>
               <select
                 value={adForm.type}
                 onChange={(e) => setAdForm({ ...adForm, type: e.target.value })}
@@ -443,35 +470,39 @@ function AdminP2P() {
               </button>
             </form>
 
-            {visibleAds.length > 0 && (
+            {allAds.length > 0 && (
               <div className="overflow-x-auto mt-6">
                 <table className="min-w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-700/50 text-gray-400">
-                      <th className="px-3 py-2 text-left">Ad id</th>
-                      <th className="px-3 py-2 text-left">Side</th>
                       <th className="px-3 py-2 text-left">Merchant</th>
+                      <th className="px-3 py-2 text-left">Side</th>
                       <th className="px-3 py-2 text-left">Price</th>
                       <th className="px-3 py-2 text-left">Available</th>
+                      <th className="px-3 py-2 text-left">Status</th>
+                      <th className="px-3 py-2 text-left">Payout</th>
                       <th className="px-3 py-2 text-left">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-700/50">
-                    {visibleAds.map((ad) => (
+                    {allAds.map((ad) => (
                       <tr key={ad.id} className="hover:bg-white/5">
-                        <td className="px-3 py-2 font-mono text-xs text-gray-300">{ad.id}</td>
+                        <td className="px-3 py-2 text-gray-300">
+                          {ad.merchant}
+                          {ad.isBot && <span className="ml-2 text-xs text-brand-400">bot</span>}
+                        </td>
                         <td className="px-3 py-2 uppercase text-gray-300">{ad.side}</td>
-                        <td className="px-3 py-2 text-gray-300">{ad.merchant?.name}</td>
                         <td className="px-3 py-2 tabular-nums text-gray-300">
                           {fmt(ad.price, 2)} {ad.fiat}
                         </td>
                         <td className="px-3 py-2 tabular-nums text-gray-300">{fmt(ad.available)}</td>
+                        <td className="px-3 py-2 text-gray-300">{ad.status}</td>
+                        <td className="px-3 py-2 text-gray-300">
+                          {ad.paymentMethods?.length ? ad.paymentMethods[0].account : 'not set'}
+                        </td>
                         <td className="px-3 py-2">
-                          <button
-                            onClick={() => setAdForm({ ...adForm, id: ad.id })}
-                            className={ghostBtn}
-                          >
-                            Use id
+                          <button onClick={() => pickAd(ad.id)} className={ghostBtn}>
+                            Edit
                           </button>
                         </td>
                       </tr>

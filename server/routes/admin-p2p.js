@@ -140,6 +140,34 @@ router.get('/p2p/stats', authenticateToken, requireAdmin, async (req, res, next)
 
 // --- ad payment accounts: bots ship without one, so an admin must fill it before users can pay ---
 
+router.get('/p2p/ads', authenticateToken, requireAdmin, async (req, res, next) => {
+  try {
+    const ads = await prisma.p2PAd.findMany({
+      include: { merchant: { include: { user: true } } },
+      orderBy: { createdAt: 'desc' },
+    })
+    res.json(
+      ads.map((a) => ({
+        id: a.id,
+        side: a.side,
+        price: a.price,
+        fiat: a.fiat,
+        available: a.available,
+        minAmount: a.minAmount,
+        maxAmount: a.maxAmount,
+        status: a.status,
+        paymentMethods: Array.isArray(a.paymentMethods) ? a.paymentMethods : [],
+        merchant: a.merchant.businessName,
+        isBot: a.merchant.isBot,
+        email: a.merchant.user.email,
+        merchantId: a.merchantId,
+      }))
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.patch('/p2p/ads/:id', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
     const { paymentMethods, status, price, minAmount, maxAmount, available } = req.body
