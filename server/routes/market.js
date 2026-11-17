@@ -1,6 +1,7 @@
 const express = require('express')
 const prisma = require('../db')
 const { displayPrice } = require('../services/priceEngine')
+const { getOrderBook, getRecentTrades, buildCandles } = require('../services/matchingEngine')
 
 const router = express.Router()
 
@@ -58,16 +59,38 @@ router.get('/list', async (req, res, next) => {
 router.get('/chart/:symbol', async (req, res, next) => {
   try {
     const symbol = String(req.params.symbol).toUpperCase().split('/')[0]
-    const { timeframe = '7', indicators } = req.query
+    const { timeframe = '1h', indicators } = req.query
     const coin = await prisma.marketData.findUnique({ where: { symbol } })
     if (!coin) return res.status(404).json({ success: false, message: 'symbol not found' })
 
-    const historicalData = generateCandles(displayPrice(coin), parseInt(timeframe), coin.decimals)
-    const response = { ohlcv: historicalData }
-    if (indicators) {
-      response.indicators = calculateTechnicalIndicators(historicalData, indicators.split(','))
+    // Candles are aggregated from executed trades; a market with no fills has no chart history yet
+    const ohlcv = await buildCandles(symbol, timeframe)
+    const response = { ohlcv }
+    if (indicators && ohlcv.length) {
+      response.indicators = calculateTechnicalIndicators(ohlcv, indicators.split(','))
     }
     res.json(response)
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/orderbook/:symbol', async (req, res, next) => {
+  try {
+    const symbol = String(req.params.symbol).toUpperCase().split('/')[0]
+    const depth = Math.min(50, Math.max(1, parseInt(req.query.depth) || 20))
+    const book = await getOrderBook(symbol, depth)
+    res.json(book)
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/trades/:symbol', async (req, res, next) => {
+  try {
+    const symbol = String(req.params.symbol).toUpperCase().split('/')[0]
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 40))
+    res.json(await getRecentTrades(symbol, limit))
   } catch (e) {
     next(e)
   }
@@ -102,28 +125,6 @@ router.get('/search', async (req, res, next) => {
     next(e)
   }
 })
-
-function generateCandles(currentPrice, days, decimals) {
-  const count = Math.max(1, days)
-  const data = []
-  let price = currentPrice
-  for (let i = 0; i < count; i++) {
-    const open = price
-    const high = open * (1 + Math.random() * 0.04)
-    const low = open * (1 - Math.random() * 0.04)
-    const close = +(low + Math.random() * (high - low)).toFixed(decimals)
-    data.push({
-      timestamp: Date.now() - (count - 1 - i) * 24 * 60 * 60 * 1000,
-      open: +open.toFixed(decimals),
-      high: +high.toFixed(decimals),
-      low: +low.toFixed(decimals),
-      close,
-      volume: Math.random() * 1000000000,
-    })
-    price = close * (1 + (Math.random() - 0.5) * 0.04)
-  }
-  return data
-}
 
 function calculateTechnicalIndicators(data, indicators) {
   const prices = data.map((d) => d.close)

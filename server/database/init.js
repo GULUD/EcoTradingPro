@@ -37,12 +37,12 @@ const NEWS = [
 const ANNOUNCEMENTS = [
   {
     title: 'Welcome to EcoTradingPro',
-    content: 'Start with a virtual balance of 10000 and practice trading in a simulated market.',
+    content: 'Deposit funds and trade spot markets with a live central limit order book.',
     type: 'info',
   },
   {
     title: 'New features available',
-    content: 'Real-time market data and an improved trading interface are now online.',
+    content: 'Real-time order book, live trade tape and advanced charting are now online.',
     type: 'update',
   },
 ]

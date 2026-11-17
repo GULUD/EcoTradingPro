@@ -268,8 +268,8 @@ function OrderHistory() {
                     ${((item.quantity || item.amount) * item.price).toLocaleString()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(item.status)}`}>
-                      {item.status?.charAt(0).toUpperCase() + item.status?.slice(1)}
+                    <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(item.statusLabel || item.status)}`}>
+                      {(item.statusLabel || item.status)?.charAt(0).toUpperCase() + (item.statusLabel || item.status)?.slice(1)}
                     </span>
                   </td>
                 </tr>
@@ -303,7 +303,7 @@ function OrderHistory() {
           <h3 className="text-sm font-medium text-gray-500 mb-2">Success Rate</h3>
           <p className="text-2xl font-bold text-emerald-500">
             {filteredData().length > 0 
-              ? ((filteredData().filter(item => item.status === 'completed').length / filteredData().length) * 100).toFixed(1)
+              ? ((filteredData().filter(item => (item.statusLabel || item.status) === 'completed').length / filteredData().length) * 100).toFixed(1)
               : '0'
             }%
           </p>

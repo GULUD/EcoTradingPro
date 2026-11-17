@@ -1,6 +1,7 @@
 const express = require('express')
 const prisma = require('../db')
 const { authenticateToken, requireUser } = require('../middleware/auth')
+const { executeOrder, cancelOrder, orderDto, TradeError } = require('../services/matchingEngine')
 
 const router = express.Router()
 
@@ -58,130 +59,48 @@ router.get('/trades', authenticateToken, requireUser, async (req, res, next) => 
   }
 })
 
-router.post('/trades', authenticateToken, requireUser, async (req, res, next) => {
+// Accepts both the current order payload and the legacy trade payload so old
+// clients keep working while every fill goes through the matching engine
+function normalizeOrder(body) {
+  const symbol = String(body.symbol || body.asset || '').toUpperCase().split('/')[0]
+  const side = body.side || (['buy', 'sell'].includes(body.type) ? body.type : null)
+  const rawType = body.orderType || body.type
+  const type = ['limit', 'stop-loss', 'stop-limit'].includes(rawType) ? 'limit' : 'market'
+  const price = body.price != null ? +body.price : null
+  let amount = body.amount != null ? +body.amount : null
+  let size = body.size != null ? +body.size : null
+  if (amount == null && body.quantity != null) {
+    if (side === 'buy') amount = +body.quantity * +(body.price || 0)
+    else size = +body.quantity
+  }
+  return { symbol, side, type, price, amount, size }
+}
+
+async function placeOrder(req, res, next) {
   try {
-    const { type, asset, quantity, orderType } = req.body
-    if (!type || !asset || !quantity) {
-      return res.status(400).json({ success: false, error: 'Missing required trade data' })
+    const payload = normalizeOrder(req.body)
+    if (!payload.symbol || !['buy', 'sell'].includes(payload.side)) {
+      return res.status(400).json({ success: false, error: 'symbol and side are required' })
     }
-    if (!['buy', 'sell'].includes(type)) {
-      return res.status(400).json({ success: false, error: 'Invalid trade type' })
-    }
-
-    const symbol = String(asset).toUpperCase().split('/')[0]
-    const coin = await prisma.marketData.findUnique({ where: { symbol } })
-    if (!coin || coin.delisted) {
-      return res.status(400).json({ success: false, error: 'Market not available' })
-    }
-
-    const qty = Number(quantity)
-    if (!Number.isFinite(qty) || qty <= 0 || qty > 1e9) {
-      return res.status(400).json({ success: false, error: 'Invalid quantity' })
-    }
-
-    // Execution price and amount are always derived server-side; client-supplied price/amount is ignored
-    const px = +(coin.manualPrice ?? coin.price).toFixed(coin.decimals ?? 2)
-    const amt = +(qty * px).toFixed(2)
-    if (!(px > 0) || !(amt > 0)) {
-      return res.status(400).json({ success: false, error: 'Invalid amount or price' })
-    }
-
-    const execute = () =>
-      prisma.$transaction(
-        async (tx) => {
-          const u = await tx.user.findUnique({ where: { id: req.user.id } })
-          if (!u) return { reject: { status: 401, error: 'User not found' } }
-
-          const portfolio = { ...(u.portfolio || {}) }
-          const held = Number(portfolio[symbol] || 0)
-
-          if (type === 'buy' && u.balance < amt) {
-            return { reject: { status: 400, error: 'Insufficient balance' } }
-          }
-          if (type === 'sell' && held < qty) {
-            return { reject: { status: 400, error: 'Insufficient holdings' } }
-          }
-
-          const nextQty = +(held + (type === 'buy' ? qty : -qty)).toFixed(8)
-          if (nextQty > 0) portfolio[symbol] = nextQty
-          else delete portfolio[symbol]
-
-          const updated = await tx.user.update({
-            where: { id: req.user.id },
-            data: {
-              balance: type === 'buy' ? { decrement: amt } : { increment: amt },
-              portfolio,
-            },
-          })
-
-          const trade = await tx.trade.create({
-            data: {
-              userId: req.user.id,
-              symbol,
-              side: type,
-              size: qty,
-              price: px,
-              pnl: 0,
-              source: 'user',
-              time: BigInt(Date.now()),
-            },
-          })
-
-          await tx.transaction.create({
-            data: {
-              userId: req.user.id,
-              type: 'trade',
-              amount: type === 'buy' ? -amt : amt,
-              balanceBefore: u.balance,
-              balanceAfter: updated.balance,
-              reason: `${type} ${qty} ${symbol} @ ${px}${orderType ? ` (${orderType})` : ''}`,
-              ts: BigInt(Date.now()),
-            },
-          })
-
-          return { updated, trade }
-        },
-        { isolationLevel: 'Serializable' }
-      )
-
-    let result
-    // Serializable transactions can abort under contention; one retry is enough for this write shape
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        result = await execute()
-        break
-      } catch (e) {
-        if (e.code === 'P2034' && attempt === 0) continue
-        throw e
-      }
-    }
-
-    if (result.reject) {
-      return res
-        .status(result.reject.status)
-        .json({ success: false, error: result.reject.error })
-    }
-
-    const { updated, trade } = result
-    const io = req.app.get('io')
-    if (io) {
-      io.to('market').emit('trade:executed', toTradeDto(trade))
-      io.to(`user-${req.user.id}`).emit('balance:update', {
-        balance: updated.balance,
-        portfolio: updated.portfolio,
-      })
-    }
-
+    const result = await executeOrder({ userId: req.user.id, ...payload }, req.app.get('io'))
     res.json({
       success: true,
-      trade: toTradeDto(trade),
-      balance: updated.balance,
-      portfolio: updated.portfolio,
+      order: result.order,
+      fills: result.fills,
+      lastPrice: result.lastPrice,
+      balance: result.user.balance,
+      portfolio: result.user.portfolio,
     })
   } catch (e) {
+    if (e instanceof TradeError) {
+      return res.status(e.status).json({ success: false, error: e.message })
+    }
     next(e)
   }
-})
+}
+
+router.post('/orders', authenticateToken, requireUser, placeOrder)
+router.post('/trades', authenticateToken, requireUser, placeOrder)
 
 router.get('/portfolio', authenticateToken, requireUser, async (req, res, next) => {
   try {
@@ -258,16 +177,29 @@ router.delete('/alerts/:alertId', authenticateToken, requireUser, async (req, re
   }
 })
 
-router.get('/orders', authenticateToken, requireUser, (req, res) => {
-  res.json(asArray(req.user.orders).filter((o) => o.status === 'pending'))
+router.get('/orders', authenticateToken, requireUser, async (req, res, next) => {
+  try {
+    const rows = await prisma.order.findMany({
+      where: { userId: req.user.id, status: { in: ['open', 'partial'] } },
+      orderBy: { createdAt: 'desc' },
+    })
+    res.json(rows.map(orderDto))
+  } catch (e) {
+    next(e)
+  }
 })
 
 router.delete('/orders/:orderId', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    const list = asArray(req.user.orders).filter((o) => o.id !== req.params.orderId)
-    await prisma.user.update({ where: { id: req.user.id }, data: { orders: list } })
-    res.json({ success: true })
+    const result = await cancelOrder(
+      { userId: req.user.id, orderId: req.params.orderId },
+      req.app.get('io')
+    )
+    res.json({ success: true, order: result.order, balance: result.balance, portfolio: result.portfolio })
   } catch (e) {
+    if (e instanceof TradeError) {
+      return res.status(e.status).json({ success: false, error: e.message })
+    }
     next(e)
   }
 })
@@ -275,13 +207,18 @@ router.delete('/orders/:orderId', authenticateToken, requireUser, async (req, re
 router.get('/orders/history', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const { status, days } = req.query
-    let orders = asArray(req.user.orders)
-    if (status && status !== 'all') orders = orders.filter((o) => o.status === status)
-    if (days) {
-      const since = Date.now() - parseInt(days) * 24 * 60 * 60 * 1000
-      orders = orders.filter((o) => new Date(o.timestamp).getTime() >= since)
+    const where = { userId: req.user.id }
+    if (status && status !== 'all') {
+      // History filters use the legacy vocabulary shown in the UI
+      const map = { completed: 'filled', pending: 'open', cancelled: 'canceled', partial: 'partial' }
+      const dbStatus = map[status] || status
+      where.status = dbStatus
     }
-    res.json(orders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)))
+    if (days) {
+      where.createdAt = { gte: new Date(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000) }
+    }
+    const rows = await prisma.order.findMany({ where, orderBy: { createdAt: 'desc' }, take: 500 })
+    res.json(rows.map(orderDto))
   } catch (e) {
     next(e)
   }

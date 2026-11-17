@@ -81,40 +81,10 @@ function AdvancedCharts() {
       setTechnicalData(response.data.indicators || {})
     } catch (error) {
       console.error('Error fetching chart data:', error)
-      generateMockChartData()
+      setChartData([])
     } finally {
       setLoading(false)
     }
-  }
-
-  const generateMockChartData = () => {
-    const data = []
-    const basePrice = 50000
-    let currentPrice = basePrice
-
-    for (let i = 0; i < 100; i++) {
-      const timestamp = new Date(Date.now() - (99 - i) * 24 * 60 * 60 * 1000)
-      const variation = (Math.random() - 0.5) * 0.1
-      currentPrice = currentPrice * (1 + variation)
-
-      const open = currentPrice
-      const high = open * (1 + Math.random() * 0.05)
-      const low = open * (1 - Math.random() * 0.05)
-      const close = low + Math.random() * (high - low)
-      const volume = Math.random() * 1000000
-
-      data.push({
-        timestamp: timestamp.getTime(),
-        open,
-        high,
-        low,
-        close,
-        volume
-      })
-    }
-
-    setChartData(data)
-    generateTechnicalIndicators(data)
   }
 
   const generateTechnicalIndicators = (data) => {

@@ -1,7 +1,7 @@
 {
   "name": "crypto-trading-platform",
   "version": "1.0.0",
-  "description": "Full-stack crypto trading simulation platform",
+  "description": "Full-stack crypto trading platform with an internal matching engine",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "concurrently \"npm run server\" \"npm run client\"",

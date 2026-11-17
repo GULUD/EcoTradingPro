@@ -80,10 +80,10 @@ function UserDashboard() {
       chartInstance.current = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+          labels: [],
           datasets: [{
-            label: 'BTC/USD',
-            data: [39500, 40200, 39800, 41000, 40800, 41500, 41230],
+            label: 'BTC/USDT',
+            data: [],
             borderColor: '#10B981',
             backgroundColor: 'rgba(16, 185, 129, 0.1)',
             borderWidth: 3,
@@ -125,6 +125,8 @@ function UserDashboard() {
       })
     }
 
+    fetchChartData(activeTimeFilter)
+
     return () => {
       if (chartInstance.current) {
         chartInstance.current.destroy()
@@ -142,23 +144,26 @@ function UserDashboard() {
     setTradeForm(prev => ({ ...prev, [field]: value }))
   }
 
-  const generateRandomChartData = () => {
-    const data = []
-    let current = 40000
-    for (let i = 0; i < 7; i++) {
-      const change = (Math.random() - 0.5) * 2000
-      current += change
-      data.push(Math.round(current))
+  const CHART_TIMEFRAMES = { '1H': '1m', '1D': '15m', '1W': '1h', '1M': '4h', '1Y': '1d' }
+
+  const fetchChartData = async (filter) => {
+    try {
+      const timeframe = CHART_TIMEFRAMES[filter] || '1h'
+      const response = await fetch(`${API_BASE}/api/market/chart/BTC?timeframe=${timeframe}`)
+      const payload = await response.json()
+      const candles = payload.ohlcv || []
+      if (!chartInstance.current) return
+      chartInstance.current.data.labels = candles.map((c) => new Date(c.timestamp).toLocaleString())
+      chartInstance.current.data.datasets[0].data = candles.map((c) => c.close)
+      chartInstance.current.update()
+    } catch (error) {
+      console.error('[dashboard] chart fetch failed', error.message)
     }
-    return data
   }
 
   const handleTimeFilterChange = (filter) => {
     setActiveTimeFilter(filter)
-    if (chartInstance.current) {
-      chartInstance.current.data.datasets[0].data = generateRandomChartData()
-      chartInstance.current.update()
-    }
+    fetchChartData(filter)
   }
 
   const cryptoIcons = {

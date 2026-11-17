@@ -18,6 +18,18 @@ enum TradeSource {
   bot
 }
 
+enum OrderType {
+  market
+  limit
+}
+
+enum OrderStatus {
+  open
+  partial
+  filled
+  canceled
+}
+
 model User {
   id                 String   @id @default(cuid())
   firstName          String
@@ -28,7 +40,6 @@ model User {
   isActive           Boolean  @default(true)
   mustChangePassword Boolean  @default(false)
   portfolio          Json     @default("{}")
-  orders             Json     @default("[]")
   watchlist          Json     @default("[]")
   priceAlerts        Json     @default("[]")
   tradingBots        Json     @default("[]")
@@ -41,6 +52,7 @@ model User {
 
   trades       Trade[]
   transactions Transaction[]
+  orders       Order[]
 
   @@index([isActive])
 }
@@ -77,6 +89,7 @@ model MarketData {
   updatedAt   DateTime  @updatedAt
 
   trades Trade[]
+  orders Order[]
 
   @@index([delisted])
 }
@@ -98,6 +111,30 @@ model Trade {
 
   @@index([symbol, time])
   @@index([userId, time])
+}
+
+// Resting limit orders. A null userId marks platform liquidity, which is not
+// backed by a user balance and therefore never settles user funds.
+model Order {
+  id        String      @id @default(cuid())
+  userId    String?
+  symbol    String
+  side      Side
+  type      OrderType   @default(limit)
+  price     Float
+  size      Float
+  filled    Float       @default(0)
+  status    OrderStatus @default(open)
+  house     Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  coin MarketData @relation(fields: [symbol], references: [symbol], onDelete: Cascade)
+
+  @@index([symbol, side, status, price])
+  @@index([userId, status])
+  @@index([house, status])
 }
 
 model Transaction {

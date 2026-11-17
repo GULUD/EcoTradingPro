@@ -23,6 +23,7 @@ const jwt = require('jsonwebtoken')
 
 const prisma = require('./db')
 const { tickPrices } = require('./services/priceEngine')
+const { tick: tickBook } = require('./services/marketMaker')
 const { router: authRouter } = require('./routes/auth')
 
 const app = express()
@@ -128,9 +129,17 @@ const priceTimer = setInterval(() => {
   tickPrices(io).catch((e) => console.error('[price] tick failed:', e.message))
 }, 3000)
 
+// Keeps the venue's own quotes present on both sides of every listed market
+const bookTimer = setInterval(() => {
+  tickBook(io).catch((e) => console.error('[book] tick failed:', e.message))
+}, 6000)
+
+tickBook(io).catch((e) => console.error('[book] initial tick failed:', e.message))
+
 process.on('SIGTERM', () => {
   console.log('[boot] SIGTERM received, shutting down')
   clearInterval(priceTimer)
+  clearInterval(bookTimer)
   server.close(() => {
     prisma.$disconnect().finally(() => process.exit(0))
   })
