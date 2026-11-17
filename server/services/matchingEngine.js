@@ -479,20 +479,35 @@ async function getOrderBook(symbol, depth = 20) {
   return { symbol, bids: build(bids, 'desc'), asks: build(asks, 'asc') }
 }
 
+// A user-to-user fill is stored once per side so each account can replay its own
+// history; charts and the public tape must count that fill only once
+function dedupeTrades(rows) {
+  const seen = new Set()
+  return rows.filter((t) => {
+    const key = `${t.time}:${t.price}:${t.size}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 async function getRecentTrades(symbol, limit = 40) {
   const rows = await prisma.trade.findMany({
     where: { symbol },
     orderBy: { time: 'desc' },
-    take: limit,
+    // Duplicated maker rows are collapsed below, so fetch extra to still fill the tape
+    take: limit * 2,
   })
-  return rows.map((t) => ({
-    id: t.id,
-    symbol: t.symbol,
-    side: t.side,
-    price: t.price,
-    size: t.size,
-    time: Number(t.time),
-  }))
+  return dedupeTrades(rows)
+    .slice(0, limit)
+    .map((t) => ({
+      id: t.id,
+      symbol: t.symbol,
+      side: t.side,
+      price: t.price,
+      size: t.size,
+      time: Number(t.time),
+    }))
 }
 
 const TF_MS = {
@@ -530,13 +545,14 @@ async function buildCandles(symbol, timeframe) {
   const now = Date.now()
   const from = now - step * count
 
-  const trades = await prisma.trade.findMany({
+  const fetched = await prisma.trade.findMany({
     where: { symbol, time: { gte: BigInt(from) } },
     // Newest first so a busy market keeps its recent candles; reversed below for charting
     orderBy: { time: 'desc' },
     take: 20000,
   })
-  if (!trades.length) return []
+  if (!fetched.length) return []
+  const trades = dedupeTrades(fetched)
   trades.reverse()
 
   const buckets = new Map()
@@ -577,6 +593,7 @@ module.exports = {
   getOrderBook,
   getRecentTrades,
   buildCandles,
+  dedupeTrades,
   orderDto,
   bestPrice,
   r8,

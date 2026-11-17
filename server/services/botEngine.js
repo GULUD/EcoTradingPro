@@ -50,7 +50,8 @@ async function step(bot, io) {
 
   const counter = Math.random() < (bot.counterRate ?? 0.2)
   const side = counter ? (up ? 'sell' : 'buy') : up ? 'buy' : 'sell'
-  const visible = +(qty * (0.2 + Math.random() * 0.3)).toFixed(c.decimals)
+  // The tape must print the size that was actually traded, not a cosmetic fraction
+  const visible = qty
 
   const open = c.open24h || next
   const change24h = +(((next - open) / open) * 100).toFixed(2)
