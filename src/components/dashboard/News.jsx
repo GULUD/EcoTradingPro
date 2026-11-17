@@ -19,6 +19,19 @@ function News() {
     { value: 'regulation', label: 'Regulation' }
   ]
 
+  // priority is an Int in the database (0 normal, 1 high, 2 urgent);
+  // calling toUpperCase on it used to crash the whole page
+  const priorityMeta = (priority) => {
+    switch (Number(priority)) {
+      case 2: return { label: 'URGENT', color: 'text-red-600 dark:text-red-400', icon: 'fas fa-triangle-exclamation text-red-500' }
+      case 1: return { label: 'HIGH', color: 'text-orange-600 dark:text-orange-400', icon: 'fas fa-bullhorn text-orange-500' }
+      default: return { label: 'NORMAL', color: 'text-blue-600 dark:text-blue-400', icon: 'fas fa-newspaper text-blue-500' }
+    }
+  }
+
+  const categoryLabel = (value) =>
+    categories.find((cat) => cat.value === value)?.label || value || 'General'
+
   useEffect(() => {
     fetchNews()
   }, [])
@@ -36,29 +49,19 @@ function News() {
 
   const filteredNews = news.filter(article => {
     const matchesCategory = selectedCategory === 'all' || article.category === selectedCategory
-    const matchesSearch = article.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         article.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         article.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+    const text = `${article.title || ''} ${article.content || ''}`.toLowerCase()
+    const matchesSearch = text.includes(searchTerm.toLowerCase())
     return matchesCategory && matchesSearch
   })
 
-  const getPriorityIcon = (priority) => {
-    switch (priority) {
-      case 'urgent': return <i className="fas fa-triangle-exclamation text-red-500"></i>
-      case 'high': return <i className="fas fa-bullhorn text-orange-500"></i>
-      case 'normal': return <i className="fas fa-newspaper text-blue-500"></i>
-      case 'low': return <i className="fas fa-note-sticky text-gray-400"></i>
-      default: return <i className="fas fa-newspaper text-blue-500"></i>
-    }
-  }
-
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'urgent': return 'text-red-600 dark:text-red-400'
-      case 'high': return 'text-orange-600 dark:text-orange-400'
-      case 'normal': return 'text-blue-600 dark:text-blue-400'
-      case 'low': return 'text-gray-600 dark:text-gray-400'
-      default: return 'text-gray-600 dark:text-gray-400'
+  const openArticle = async (article) => {
+    setSelectedArticle(article)
+    try {
+      // The detail endpoint is the only place that counts a read
+      const response = await axios.get(`/api/news/${article.id}`)
+      setSelectedArticle((current) => (current?.id === article.id ? response.data : current))
+    } catch (error) {
+      console.error('[news] detail fetch failed', error.message)
     }
   }
 
@@ -115,17 +118,19 @@ function News() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredNews.map((article) => (
-            <div key={article._id} className="glass rounded-2xl p-6 hover:shadow-lg transition cursor-pointer" onClick={() => setSelectedArticle(article)}>
+          {filteredNews.map((article) => {
+            const meta = priorityMeta(article.priority)
+            return (
+            <div key={article._id} className="glass rounded-2xl p-6 hover:shadow-lg transition cursor-pointer" onClick={() => openArticle(article)}>
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl">{getPriorityIcon(article.priority)}</span>
-                  <span className={`text-sm font-medium ${getPriorityColor(article.priority)}`}>
-                    {article.priority.toUpperCase()}
+                  <i className={meta.icon}></i>
+                  <span className={`text-sm font-medium ${meta.color}`}>
+                    {meta.label}
                   </span>
                 </div>
                 <span className="text-xs text-gray-500 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                  {categories.find(c => c.value === article.category)?.label}
+                  {categoryLabel(article.category)}
                 </span>
               </div>
               
@@ -141,25 +146,13 @@ function News() {
                 {article.content}
               </p>
               
-              {article.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-4">
-                  {article.tags.slice(0, 3).map((tag, index) => (
-                    <span key={index} className="px-2 py-1 bg-brand-100 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400 text-xs rounded">
-                      #{tag}
-                    </span>
-                  ))}
-                  {article.tags.length > 3 && (
-                    <span className="text-xs text-gray-500">+{article.tags.length - 3} more</span>
-                  )}
-                </div>
-              )}
-              
               <div className="flex justify-between items-center text-xs text-gray-500">
-                <span>By {article.author}</span>
+                <span>By {article.author || 'Editorial Team'}</span>
                 <span>{new Date(article.publishedAt || article.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -170,28 +163,18 @@ function News() {
             <div className="flex justify-between items-start mb-6">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-3">
-                  <span className="text-3xl">{getPriorityIcon(selectedArticle.priority)}</span>
+                  <i className={`${priorityMeta(selectedArticle.priority).icon} text-3xl`}></i>
                   <div>
                     <h2 className="text-2xl font-bold">{selectedArticle.title}</h2>
                     <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
-                      <span>By {selectedArticle.author}</span>
+                      <span>By {selectedArticle.author || 'Editorial Team'}</span>
                       <span>{new Date(selectedArticle.publishedAt || selectedArticle.createdAt).toLocaleDateString()}</span>
                       <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                        {categories.find(c => c.value === selectedArticle.category)?.label}
+                        {categoryLabel(selectedArticle.category)}
                       </span>
                     </div>
                   </div>
                 </div>
-                
-                {selectedArticle.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {selectedArticle.tags.map((tag, index) => (
-                      <span key={index} className="px-3 py-1 bg-brand-100 dark:bg-brand-900/20 text-brand-700 dark:text-brand-400 text-sm rounded-full">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
               
               <button

@@ -13,27 +13,6 @@ const COINS = [
   { symbol: 'UNI', name: 'Uniswap', price: 8.9, volatility: 2.7, decimals: 3 },
 ]
 
-const NEWS = [
-  {
-    title: 'Bitcoin holds above prior resistance',
-    content: 'Bitcoin price action remains constructive after reclaiming its previous range high.',
-    author: 'CryptoNews Team',
-    category: 'Market Analysis',
-  },
-  {
-    title: 'Ethereum staking rewards update',
-    content: 'Validator rewards adjust with the latest network upgrade.',
-    author: 'DeFi Analyst',
-    category: 'Technology',
-  },
-  {
-    title: 'Regulatory clarity boosts crypto markets',
-    content: 'New guidelines give the industry a clearer compliance path.',
-    author: 'Regulatory Expert',
-    category: 'Regulation',
-  },
-]
-
 const ANNOUNCEMENTS = [
   {
     title: 'Welcome to EcoTradingPro',
@@ -64,14 +43,8 @@ async function seedMarketData() {
 }
 
 async function seedContent() {
-  const newsCount = await prisma.news.count()
-  if (newsCount === 0) {
-    for (const n of NEWS) {
-      await prisma.news.create({ data: n })
-    }
-    console.log('[seed] news created')
-  }
-
+  // News is editorial content and must only come from an admin. Seeding invented
+  // articles with fictional authors made the public news page publish fake data.
   const announcementCount = await prisma.announcement.count()
   if (announcementCount === 0) {
     for (const a of ANNOUNCEMENTS) {

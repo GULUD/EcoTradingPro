@@ -20,7 +20,7 @@ const P2P = lazy(() => import('./P2P'))
 
 const panelFallback = <div className="p-8 text-sm text-gray-500">Loading...</div>
 
-const CHART_TIMEFRAMES = { '1H': '1m', '1D': '15m', '1W': '1h', '1M': '4h', '1Y': '1d' }
+const CHART_TIMEFRAMES = { '1H': '60m', '1D': '15m', '1W': '1h', '1M': '30d', '1Y': '1y' }
 
 const CRYPTO_ICONS = {
   BTC: '₿',
@@ -264,7 +264,11 @@ function DashboardHome({
           const price = Number(item?.price)
           if (!Number.isFinite(price)) return
           const change = Number(item?.change24h ?? item?.change)
-          next[pair] = { price, change: Number.isFinite(change) ? change : 0 }
+          next[pair] = {
+            price,
+            change: Number.isFinite(change) ? change : 0,
+            name: item?.name || pair.split('/')[0],
+          }
         })
         // Only replace the table when the payload parsed into usable numbers
         if (Object.keys(next).length) setMarketData(next)
@@ -449,7 +453,31 @@ function DashboardHome({
 
   const tradePair = `${tradeForm.asset}/GULU`
   const tradePrice = Number(marketData[tradePair]?.price) || 0
-  const tradeQuantity = tradePrice > 0 ? (Number(tradeForm.amount) || 0) / tradePrice : 0
+  // Sells and stop orders are entered in base units, buys in GULU (quote)
+  const isBaseAmount = activeTab === 'sell' || tradeForm.orderType === 'stop'
+  const tradeQuantity = isBaseAmount
+    ? Number(tradeForm.amount) || 0
+    : tradePrice > 0 ? (Number(tradeForm.amount) || 0) / tradePrice : 0
+  const dashboardAssets = Object.keys(marketData)
+    .map((pair) => ({ symbol: pair.split('/')[0], name: marketData[pair]?.name || pair.split('/')[0] }))
+    .sort((a, b) => a.symbol.localeCompare(b.symbol))
+  const topMovers = Object.entries(marketData)
+    .sort((a, b) => (Number(b[1]?.change) || 0) - (Number(a[1]?.change) || 0))
+    .slice(0, 5)
+
+  // The quick panel used to discard every input; carrying them through the URL
+  // opens the full ticket already prefilled with what the user selected
+  const openTrading = () => {
+    const params = new URLSearchParams({
+      symbol: tradeForm.asset,
+      side: activeTab,
+      type: tradeForm.orderType,
+    })
+    if (Number(tradeForm.amount) > 0) {
+      params.set('amount', String(isBaseAmount ? tradeQuantity : tradeForm.amount))
+    }
+    navigate(`/dashboard/trading?${params.toString()}`)
+  }
 
   return (
     <>
@@ -663,16 +691,19 @@ function DashboardHome({
                     onChange={(e) => onTradeFormChange('asset', e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
                   >
-                    <option value="BTC">Bitcoin (BTC)</option>
-                    <option value="ETH">Ethereum (ETH)</option>
-                    <option value="SOL">Solana (SOL)</option>
-                    <option value="ADA">Cardano (ADA)</option>
-                    <option value="XRP">Ripple (XRP)</option>
+                    {dashboardAssets.length === 0 && (
+                      <option value={tradeForm.asset}>{tradeForm.asset}</option>
+                    )}
+                    {dashboardAssets.map((asset) => (
+                      <option key={asset.symbol} value={asset.symbol}>{asset.name} ({asset.symbol})</option>
+                    ))}
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Amount (GULU)</label>
+                  <label className="block text-sm font-medium mb-2">
+                    Amount ({isBaseAmount ? tradeForm.asset : 'GULU'})
+                  </label>
                   <input
                     type="number"
                     value={tradeForm.amount}
@@ -717,7 +748,7 @@ function DashboardHome({
                 </div>
 
                 <button
-                  onClick={() => navigate('/dashboard/trading')}
+                  onClick={openTrading}
                   className={`w-full py-3 rounded-xl font-semibold transition ${
                     activeTab === 'buy'
                       ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
@@ -740,7 +771,7 @@ function DashboardHome({
                 {Object.keys(marketData).length === 0 && (
                   <p className="text-sm text-gray-500 text-center py-6">Live market data unavailable.</p>
                 )}
-                {Object.entries(marketData).map(([pair, data]) => {
+                {topMovers.map(([pair, data]) => {
                   const [base] = pair.split('/')
                   const price = Number(data?.price) || 0
                   const change = Number(data?.change) || 0

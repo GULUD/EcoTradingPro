@@ -84,8 +84,12 @@ async function triggerStopOrders(io) {
       continue
     }
 
+    // The schedule fired; without a terminal status the stale sweep would later
+    // cancel a stop that actually executed and the history would be misleading
+    await prisma.order.update({ where: { id: stop.id }, data: { status: 'filled' } })
+
     if (io && stop.userId) {
-      io.to(`user-${stop.userId}`).emit('order:update', { orderId: stop.id, status: 'triggered' })
+      io.to(`user-${stop.userId}`).emit('order:update', { orderId: stop.id, status: 'filled' })
     }
   }
 }

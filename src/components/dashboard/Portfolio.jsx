@@ -149,7 +149,7 @@ function Portfolio() {
         </div>
         
         <div className="glass rounded-2xl p-6">
-          <h3 className="text-lg font-semibold mb-2">Total P&L</h3>
+          <h3 className="text-lg font-semibold mb-2">30d P&amp;L</h3>
           <p className={`text-3xl font-bold ${
             profitLoss == null ? 'text-gray-500' : profitLoss >= 0 ? 'text-emerald-500' : 'text-red-500'
           }`}>
@@ -435,7 +435,7 @@ function Portfolio() {
                   <h4 className="font-semibold mb-3">Performance Metrics</h4>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span>Total Return</span>
+                      <span>30d Return</span>
                       <span className={
                         profitLossPercentage == null
                           ? 'text-gray-500'
@@ -447,7 +447,7 @@ function Portfolio() {
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Win Rate</span>
+                      <span>30d Win Rate</span>
                       <span>{winRate == null ? 'No data yet' : `${winRate.toFixed(1)}%`}</span>
                     </div>
                     <div className="flex justify-between">

@@ -503,6 +503,11 @@ const TF_MS = {
   '4h': 4 * 60 * 60 * 1000,
   '1d': 24 * 60 * 60 * 1000,
   '1w': 7 * 24 * 60 * 60 * 1000,
+  // Explicit windows for the dashboard buttons; without these "1M" fell back
+  // to a minute chart and "1Y" silently became one hour
+  '60m': 60 * 60 * 1000,
+  '30d': 30 * 24 * 60 * 60 * 1000,
+  '1y': 365 * 24 * 60 * 60 * 1000,
 }
 const TF_BUCKETS = {
   '1m': 120,
@@ -512,6 +517,9 @@ const TF_BUCKETS = {
   '4h': 120,
   '1d': 120,
   '1w': 52,
+  '60m': 60,
+  '30d': 30,
+  '1y': 52,
 }
 
 // Candles come from executed trades only. Empty buckets carry the previous

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import axios from '../../utils/axios'
@@ -8,10 +9,20 @@ const FEE_RATE = 0.001
 function Trading() {
   const { user, updateUser } = useAuth()
   const { marketData: liveMarketData } = useWebSocket()
-  const [orderType, setOrderType] = useState('limit')
-  const [tradeType, setTradeType] = useState('buy')
-  const [selectedAsset, setSelectedAsset] = useState('BTC')
-  const [amount, setAmount] = useState('')
+  const [searchParams] = useSearchParams()
+  // The dashboard quick ticket carries its inputs here; the ticket is then
+  // prefilled instead of silently discarding what the user typed
+  const initialSide = searchParams.get('side')
+  const initialType = searchParams.get('type')
+  const initialAmount = searchParams.get('amount')
+  const [orderType, setOrderType] = useState(
+    initialType === 'limit' ? 'limit' : initialType === 'stop' ? 'stop-loss' : initialType ? 'market' : 'limit'
+  )
+  const [tradeType, setTradeType] = useState(initialSide === 'sell' ? 'sell' : 'buy')
+  const [selectedAsset, setSelectedAsset] = useState(
+    (searchParams.get('symbol') || 'BTC').toUpperCase()
+  )
+  const [amount, setAmount] = useState(initialAmount && Number(initialAmount) > 0 ? initialAmount : '')
   const [price, setPrice] = useState('')
   const [triggerPrice, setTriggerPrice] = useState('')
   const [priceSnapshot, setPriceSnapshot] = useState({})

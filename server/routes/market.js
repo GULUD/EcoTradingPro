@@ -11,7 +11,7 @@ const CHART_CACHE_TTL_MS = 60 * 1000
 const CHART_CACHE_MAX = 500
 const chartCache = new Map()
 
-const TIMEFRAMES = new Set(['1m', '5m', '15m', '1h', '4h', '1d', '1w'])
+const TIMEFRAMES = new Set(['1m', '5m', '15m', '1h', '4h', '1d', '1w', '60m', '30d', '1y'])
 
 function normalizeTimeframe(raw) {
   const value = String(raw || '').trim().toLowerCase()

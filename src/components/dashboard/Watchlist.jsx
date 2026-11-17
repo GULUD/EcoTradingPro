@@ -146,6 +146,7 @@ function Watchlist() {
         bVal = b.asset
     }
     
+    if (aVal === bVal) return 0
     if (sortOrder === 'asc') {
       return aVal > bVal ? 1 : -1
     } else {
