@@ -77,6 +77,11 @@ function Trading() {
     // Requests carry the id of the pair they were issued for; anything older is dropped
     const requestId = ++requestIdRef.current
     const asset = selectedAsset
+    // Prices belong to the previous market; keeping them would prefill a stop
+    // trigger from another asset and fire the order immediately
+    setPrice('')
+    setTriggerPrice('')
+    setMessage('')
     setOrderBook({ bids: [], asks: [] })
     setRecentTrades([])
 

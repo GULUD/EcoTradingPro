@@ -33,6 +33,13 @@ const toAdDto = (ad) => ({
   createdAt: ad.createdAt,
 })
 
+// Listed ads are visible to every signed-in user, so account numbers and holder
+// names stay hidden until an order exists and the buyer actually has to pay
+const toPublicAdDto = (ad) => ({
+  ...toAdDto(ad),
+  paymentMethods: methodsOf(ad.paymentMethods).map((m) => ({ type: m.type })),
+})
+
 const toOrderDto = (o, viewerId) => {
   const role = o.buyerId === viewerId ? 'buyer' : 'seller'
   const other = role === 'buyer' ? o.seller : o.buyer
@@ -152,7 +159,7 @@ router.get('/ads', authenticateToken, async (req, res, next) => {
     const visible = ads.filter(
       (a) => a.merchant.status === 'approved' && methodsOf(a.paymentMethods).length > 0
     )
-    res.json({ success: true, ads: visible.map(toAdDto) })
+    res.json({ success: true, ads: visible.map(toPublicAdDto) })
   } catch (e) {
     next(e)
   }

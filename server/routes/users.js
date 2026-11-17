@@ -1,4 +1,5 @@
 ﻿const express = require('express')
+const crypto = require('crypto')
 const prisma = require('../db')
 const { authenticateToken, requireUser } = require('../middleware/auth')
 const { executeOrder, cancelOrder, orderDto, TradeError } = require('../services/matchingEngine')
@@ -236,7 +237,8 @@ router.post('/alerts', authenticateToken, requireUser, async (req, res, next) =>
     }
     const list = asArray(req.user.priceAlerts)
     const alert = {
-      id: Date.now().toString(),
+      // Timestamp ids collided when two alerts were created in the same millisecond
+      id: crypto.randomUUID(),
       asset: symbol,
       price: target,
       type,
