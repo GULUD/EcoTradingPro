@@ -249,7 +249,7 @@ function Watchlist() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium mb-2">Target Price (USD)</label>
+                <label className="block text-sm font-medium mb-2">Target Price (GULU)</label>
                 <input
                   type="number"
                   value={alertPrice}

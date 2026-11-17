@@ -346,10 +346,19 @@ export function PriceChart() {
     setPoints([])
   }, [symbol])
 
+  // The canvas is replaced when the panel unmounts, so the instance must be destroyed
+  useEffect(() => () => {
+    if (chartRef.current) {
+      chartRef.current.destroy()
+      chartRef.current = null
+    }
+  }, [])
+
   useEffect(() => {
     if (!canvasRef.current) return
     const labels = points.map((pt) => new Date(pt.t).toLocaleTimeString())
     if (chartRef.current) {
+      chartRef.current.data.datasets[0].label = `${symbol}/GULU`
       chartRef.current.data.labels = labels
       chartRef.current.data.datasets[0].data = points.map((pt) => pt.p)
       chartRef.current.update('none')
@@ -361,7 +370,7 @@ export function PriceChart() {
         labels,
         datasets: [
           {
-            label: symbol,
+            label: `${symbol}/GULU`,
             data: points.map((pt) => pt.p),
             borderColor: '#10B981',
             backgroundColor: 'rgba(16,185,129,0.1)',

@@ -97,6 +97,7 @@ export const WebSocketProvider = ({ children }) => {
           type: 'trade',
           title: 'Trade executed',
           message: `${trade.side} ${trade.size} ${trade.symbol} @ ${trade.price}`,
+          timestamp: trade.time,
         },
         ...prev.slice(0, 19),
       ])

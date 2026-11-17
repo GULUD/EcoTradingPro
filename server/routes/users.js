@@ -295,11 +295,13 @@ router.get('/orders/history', authenticateToken, requireUser, async (req, res, n
     if (status && status !== 'all') {
       // History filters use the legacy vocabulary shown in the UI
       const map = { completed: 'filled', pending: 'open', cancelled: 'canceled', partial: 'partial' }
-      const dbStatus = map[status] || status
-      where.status = dbStatus
+      const dbStatus = map[status]
+      // An unknown value must not reach the enum filter, Prisma would reject the whole query
+      if (dbStatus) where.status = dbStatus
     }
-    if (days) {
-      where.createdAt = { gte: new Date(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000) }
+    const parsedDays = parseInt(days, 10)
+    if (Number.isFinite(parsedDays) && parsedDays > 0) {
+      where.createdAt = { gte: new Date(Date.now() - parsedDays * 24 * 60 * 60 * 1000) }
     }
     const rows = await prisma.order.findMany({ where, orderBy: { createdAt: 'desc' }, take: 500 })
     res.json(rows.map(orderDto))
@@ -311,9 +313,14 @@ router.get('/orders/history', authenticateToken, requireUser, async (req, res, n
 router.get('/trades/history', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const { type, days } = req.query
-    const since = days ? BigInt(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000) : null
+    const parsedDays = parseInt(days, 10)
+    const since = Number.isFinite(parsedDays) && parsedDays > 0
+      ? BigInt(Date.now() - parsedDays * 24 * 60 * 60 * 1000)
+      : null
     const trades = await portfolioService.annotateTrades(req.user.id, {
-      side: type && type !== 'all' ? type : null,
+      // Only a real side may be used as a filter; status words from the orders tab
+      // used to reach the enum and turned the whole request into a 500
+      side: ['buy', 'sell'].includes(type) ? type : null,
       since,
       limit: 500,
     })

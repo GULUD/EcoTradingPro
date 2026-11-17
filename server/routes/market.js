@@ -210,7 +210,12 @@ function calculateRSI(prices, period) {
   for (let i = period - 1; i < gains.length; i++) {
     const avgGain = gains.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period
     const avgLoss = losses.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period
-    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss
+    // A window with no losses has infinite RS, which is RSI 100; a flat window is neutral
+    if (avgLoss === 0) {
+      rsi.push(avgGain === 0 ? 50 : 100)
+      continue
+    }
+    const rs = avgGain / avgLoss
     rsi.push(100 - 100 / (1 + rs))
   }
   return rsi

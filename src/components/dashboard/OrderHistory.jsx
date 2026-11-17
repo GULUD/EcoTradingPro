@@ -18,6 +18,12 @@ function OrderHistory() {
     fetchTradeHistory()
   }, [dateRange, filter])
 
+  const switchTab = (tab) => {
+    // Status filters do not exist on the trades tab and vice versa
+    setActiveTab(tab)
+    setFilter('all')
+  }
+
   const fetchOrderHistory = async () => {
     try {
       const token = localStorage.getItem('token')
@@ -40,7 +46,8 @@ function OrderHistory() {
       const response = await axios.get('/api/users/trades/history', {
         headers: { Authorization: `Bearer ${token}` },
         params: { 
-          type: filter !== 'all' ? filter : undefined,
+          // Trades are filtered by side only; status words belong to the orders tab
+          type: ['buy', 'sell'].includes(filter) ? filter : undefined,
           days: dateRange.replace('days', '')
         }
       })
@@ -146,7 +153,7 @@ function OrderHistory() {
           {/* Tab Selection */}
           <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
             <button
-              onClick={() => setActiveTab('orders')}
+              onClick={() => switchTab('orders')}
               className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition ${
                 activeTab === 'orders'
                   ? 'bg-white dark:bg-gray-700 text-brand-500 shadow-sm'
@@ -156,7 +163,7 @@ function OrderHistory() {
               Orders
             </button>
             <button
-              onClick={() => setActiveTab('trades')}
+              onClick={() => switchTab('trades')}
               className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition ${
                 activeTab === 'trades'
                   ? 'bg-white dark:bg-gray-700 text-brand-500 shadow-sm'
@@ -173,12 +180,15 @@ function OrderHistory() {
             onChange={(e) => setFilter(e.target.value)}
             className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700"
           >
-            <option value="all">All Status</option>
-            <option value="completed">Completed</option>
-            <option value="pending">Pending</option>
-            <option value="cancelled">Cancelled</option>
-            {activeTab === 'orders' && <option value="partial">Partial</option>}
-            {activeTab === 'trades' && (
+            <option value="all">All {activeTab === 'orders' ? 'Status' : 'Trades'}</option>
+            {activeTab === 'orders' ? (
+              <>
+                <option value="completed">Completed</option>
+                <option value="pending">Pending</option>
+                <option value="partial">Partial</option>
+                <option value="cancelled">Cancelled</option>
+              </>
+            ) : (
               <>
                 <option value="buy">Buy Only</option>
                 <option value="sell">Sell Only</option>
@@ -257,15 +267,15 @@ function OrderHistory() {
                   )}
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {activeTab === 'orders' 
-                      ? `$${item.amount?.toLocaleString()}` 
-                      : `${item.quantity?.toFixed(6)} ${item.asset}`
+                      ? `${Number(item.amount || 0).toLocaleString()} GULU` 
+                      : `${(item.quantity || 0).toFixed(6)} ${item.asset}`
                     }
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    ${item.price?.toLocaleString()}
+                    {Number(item.price || 0).toLocaleString()} GULU
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    ${((item.quantity || item.amount) * item.price).toLocaleString()}
+                    {((item.quantity || item.amount || 0) * (item.price || 0)).toLocaleString()} GULU
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(item.statusLabel || item.status)}`}>
@@ -295,7 +305,7 @@ function OrderHistory() {
         <div className="glass rounded-2xl p-6">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Total Volume</h3>
           <p className="text-2xl font-bold">
-            ${filteredData().reduce((sum, item) => sum + ((item.quantity || item.amount) * item.price), 0).toLocaleString()}
+            {filteredData().reduce((sum, item) => sum + ((item.quantity || item.amount || 0) * (item.price || 0)), 0).toLocaleString()} GULU
           </p>
         </div>
         

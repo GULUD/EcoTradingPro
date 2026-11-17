@@ -640,7 +640,7 @@ function DashboardHome({
             {/* Trade Panel */}
             <div className="glass rounded-2xl p-6">
               <div className="flex gap-4 mb-6 border-b border-gray-200 dark:border-gray-700">
-                {['buy', 'sell', 'convert'].map((tab) => (
+                {['buy', 'sell'].map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}

@@ -5,6 +5,7 @@ import axios from '../../utils/axios'
 const EMPTY = 'No data yet'
 
 const fmtGulu = (value, digits = 2) => {
+  if (value == null) return EMPTY
   const number = Number(value)
   return Number.isFinite(number)
     ? `${number.toLocaleString(undefined, { maximumFractionDigits: digits })} GULU`
@@ -60,9 +61,17 @@ const PerformanceAnalytics = () => {
     )
   }
 
-  const pnlTrades = trades.filter((trade) => Number.isFinite(Number(trade.pnl)))
+  const closedCount = (Number(performance?.winningTrades) || 0) + (Number(performance?.losingTrades) || 0)
+  const hasClosedTrades = closedCount > 0
   const totalTrades = Number(performance?.totalTrades) || 0
   const hasTrades = totalTrades > 0
+  const windowStart = Date.now() - (RANGE_DAYS[timeRange] || 30) * 86400000
+
+  // Only closed sells inside the selected window can carry realized P&L; buys
+  // would otherwise add zero rows to both the curve and the return histogram
+  const pnlTrades = trades.filter(
+    (trade) => trade.side === 'sell' && Number(trade.time) >= windowStart && Number.isFinite(Number(trade.pnl))
+  )
 
   const sortedTrades = [...pnlTrades].sort((a, b) => Number(a.time) - Number(b.time))
   let runningPnl = 0
@@ -98,7 +107,14 @@ const PerformanceAnalytics = () => {
     datasets: [
       {
         label: 'Trades',
-        data: bins.map((bin) => returns.filter((r) => r >= bin && r < bin + 1).length),
+        // The outer buckets absorb everything outside the ±5% range
+        data: bins.map((bin, index) =>
+          returns.filter((r) => {
+            if (index === 0) return r < bin + 1
+            if (index === bins.length - 1) return r >= bin
+            return r >= bin && r < bin + 1
+          }).length
+        ),
         backgroundColor: 'rgba(16, 185, 129, 0.6)',
         borderColor: '#10b981',
         borderWidth: 1,
@@ -110,7 +126,7 @@ const PerformanceAnalytics = () => {
     { metric: 'Total Trades', value: hasTrades ? totalTrades : EMPTY },
     { metric: 'Winning Trades', value: hasTrades ? performance.winningTrades : EMPTY },
     { metric: 'Losing Trades', value: hasTrades ? performance.losingTrades : EMPTY },
-    { metric: 'Win Rate', value: hasTrades ? `${Number(performance.winRate).toFixed(1)}%` : EMPTY },
+    { metric: 'Win Rate', value: hasClosedTrades ? `${Number(performance.winRate).toFixed(1)}%` : EMPTY },
     { metric: 'Total P&L', value: performance ? fmtGulu(performance.totalPnL) : EMPTY },
     { metric: 'Portfolio Value', value: fmtGulu(portfolioValue?.totalValue) },
   ]
@@ -196,7 +212,7 @@ const PerformanceAnalytics = () => {
           <div className="text-center">
             <p className="text-gray-500 text-sm">Win Rate</p>
             <p className="text-2xl font-bold">
-              {hasTrades ? `${Number(performance.winRate).toFixed(1)}%` : EMPTY}
+              {hasClosedTrades ? `${Number(performance.winRate).toFixed(1)}%` : EMPTY}
             </p>
             <p className="text-xs text-gray-400">Closed sells</p>
           </div>

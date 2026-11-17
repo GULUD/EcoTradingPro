@@ -133,7 +133,9 @@ const RiskManagement = () => {
             <div>
               <p className="text-gray-500 text-sm">Portfolio Concentration</p>
               <p className="text-2xl font-bold">
-                {risk ? `${Number(risk.concentrationRisk).toFixed(1)}%` : EMPTY}
+                {risk?.concentrationRisk == null
+                  ? EMPTY
+                  : `${Number(risk.concentrationRisk).toFixed(1)}%`}
               </p>
             </div>
             <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center">

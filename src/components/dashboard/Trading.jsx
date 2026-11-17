@@ -16,6 +16,7 @@ function Trading() {
   const [triggerPrice, setTriggerPrice] = useState('')
   const [priceSnapshot, setPriceSnapshot] = useState({})
   const [account, setAccount] = useState({ balance: 0, portfolio: {} })
+  const [markets, setMarkets] = useState([])
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [] })
   const [recentTrades, setRecentTrades] = useState([])
   const [openOrders, setOpenOrders] = useState([])
@@ -24,11 +25,11 @@ function Trading() {
   const requestIdRef = useRef(0)
   const mountedRef = useRef(true)
 
-  const assets = ['BTC', 'ETH', 'SOL', 'ADA', 'XRP', 'BNB', 'MATIC', 'DOT', 'LINK', 'UNI']
-
   const prices = { ...priceSnapshot, ...liveMarketData }
   const pair = `${selectedAsset}/GULU`
   const lastPrice = Number(prices[pair]?.price) || 0
+  const coinDecimals = Number(markets.find((market) => market.symbol === selectedAsset)?.decimals)
+  const decimals = Number.isFinite(coinDecimals) ? coinDecimals : 2
   const isStop = orderType === 'stop-loss' || orderType === 'stop-limit'
   const balance = Number(account.balance) || 0
   const held = Number(account.portfolio?.[selectedAsset] || 0)
@@ -37,6 +38,27 @@ function Trading() {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+    }
+  }, [])
+
+  // Markets come from the listed coins so a delisting or a new listing is
+  // reflected here instead of offering symbols the engine cannot price
+  useEffect(() => {
+    let cancelled = false
+    axios
+      .get('/api/market/list')
+      .then((response) => {
+        if (cancelled) return
+        const list = Array.isArray(response.data?.data) ? response.data.data : []
+        setMarkets(list)
+        if (list.length && !list.some((market) => market.symbol === selectedAsset)) {
+          const preferred = list.find((market) => market.symbol === 'BTC') || list[0]
+          setSelectedAsset(preferred.symbol)
+        }
+      })
+      .catch((error) => console.error('[trading] market list failed', error.message))
+    return () => {
+      cancelled = true
     }
   }, [])
 
@@ -168,7 +190,7 @@ function Trading() {
   }
 
   const setPriceFromBook = (levelPrice, bookSide) => {
-    setPrice(levelPrice.toFixed(2))
+    setPrice(Number(levelPrice).toFixed(decimals))
     setTradeType(bookSide === 'ask' ? 'buy' : 'sell')
     setOrderType('limit')
   }
@@ -328,8 +350,9 @@ function Trading() {
                 }}
                 className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
-                {assets.map((asset) => (
-                  <option key={asset} value={asset}>{asset}/GULU</option>
+                {markets.length === 0 && <option value="">No markets</option>}
+                {markets.map((market) => (
+                  <option key={market.symbol} value={market.symbol}>{market.symbol}/GULU</option>
                 ))}
               </select>
             </div>
@@ -491,7 +514,7 @@ function Trading() {
                       onClick={() => setPriceFromBook(ask.price, 'ask')}
                       className="flex justify-between text-xs cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/10 p-1 rounded"
                     >
-                      <span className="text-red-500">{ask.price.toFixed(2)}</span>
+                      <span className="text-red-500">{Number(ask.price).toFixed(decimals)}</span>
                       <span>{ask.size.toFixed(4)}</span>
                     </div>
                   ))}
@@ -519,7 +542,7 @@ function Trading() {
                       onClick={() => setPriceFromBook(bid.price, 'bid')}
                       className="flex justify-between text-xs cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-900/10 p-1 rounded"
                     >
-                      <span className="text-emerald-500">{bid.price.toFixed(2)}</span>
+                      <span className="text-emerald-500">{Number(bid.price).toFixed(decimals)}</span>
                       <span>{bid.size.toFixed(4)}</span>
                     </div>
                   ))}
@@ -540,7 +563,7 @@ function Trading() {
               {recentTrades.map((trade) => (
                 <div key={trade.id} className="flex justify-between items-center text-sm">
                   <span className={trade.side === 'buy' ? 'text-emerald-500' : 'text-red-500'}>
-                    {trade.price.toFixed(2)} GULU
+                    {Number(trade.price).toFixed(decimals)} GULU
                   </span>
                   <span>{trade.size.toFixed(4)}</span>
                   <span className="text-gray-500">

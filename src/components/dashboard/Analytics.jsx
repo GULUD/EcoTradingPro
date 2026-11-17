@@ -70,8 +70,14 @@ function Analytics() {
 
   const holdings = composition?.byAsset || portfolioValue?.holdings || []
   const totalTrades = Number(performance?.totalTrades) || 0
+  const closedCount = (Number(performance?.winningTrades) || 0) + (Number(performance?.losingTrades) || 0)
   const hasTrades = totalTrades > 0
-  const pnlTrades = trades.filter((trade) => Number.isFinite(Number(trade.pnl)))
+  const hasClosedTrades = closedCount > 0
+  // Best/worst must use closed sells inside the selected window; buys carry no P&L
+  const windowStart = Date.now() - ({ '1d': 1, '7d': 7, '30d': 30, '90d': 90 }[timeframe] || 30) * 86400000
+  const pnlTrades = trades.filter(
+    (trade) => trade.side === 'sell' && Number(trade.time) >= windowStart && Number.isFinite(Number(trade.pnl))
+  )
   const bestTrade = pnlTrades.reduce(
     (best, trade) => (best === null || Number(trade.pnl) > Number(best.pnl) ? trade : best),
     null
@@ -134,10 +140,12 @@ function Analytics() {
         <div className="glass rounded-2xl p-6">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Win Rate</h3>
           <p className="text-2xl font-bold text-brand-500">
-            {hasTrades ? `${Number(performance.winRate).toFixed(1)}%` : EMPTY}
+            {hasClosedTrades ? `${Number(performance.winRate).toFixed(1)}%` : EMPTY}
           </p>
           <div className="text-sm text-gray-500 mt-1">
-            {hasTrades ? `${performance.winningTrades}/${totalTrades} trades` : 'No closed trades yet'}
+            {hasClosedTrades
+              ? `${performance.winningTrades}/${closedCount} closed trades`
+              : 'No closed trades yet'}
           </div>
         </div>
 
@@ -229,7 +237,7 @@ function Analytics() {
             <div className="flex justify-between">
               <span className="text-gray-500">Losing Trades</span>
               <span className="font-semibold">
-                {hasTrades ? performance.losingTrades : EMPTY}
+                {hasClosedTrades ? performance.losingTrades : EMPTY}
               </span>
             </div>
             <div className="flex justify-between">
@@ -283,7 +291,9 @@ function Analytics() {
             </div>
             <h4 className="font-semibold mb-2">Concentration Risk</h4>
             <p className="text-sm text-gray-500">
-              {risk ? `${Number(risk.concentrationRisk).toFixed(1)}%` : EMPTY}
+              {risk?.concentrationRisk == null
+                ? EMPTY
+                : `${Number(risk.concentrationRisk).toFixed(1)}%`}
             </p>
           </div>
 

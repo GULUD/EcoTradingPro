@@ -107,7 +107,7 @@ function Notifications() {
                   </div>
                   
                   <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                    <span>{new Date(notification.timestamp).toLocaleTimeString()}</span>
+                    <span>{new Date(notification.timestamp || Date.now()).toLocaleTimeString()}</span>
                     {notification.type && (
                       <span className="capitalize bg-gray-200 dark:bg-gray-600 px-2 py-1 rounded">
                         {notification.type}

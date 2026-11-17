@@ -17,6 +17,18 @@ router.post('/coins', authenticateToken, requireAdmin, async (req, res, next) =>
     if (exists) return res.status(409).json({ success: false, message: `${s} already exists` })
 
     const p = +price
+    // A zero or negative reference price makes every later change24h a division by zero
+    if (!Number.isFinite(p) || p <= 0) {
+      return res.status(400).json({ success: false, message: 'price must be a positive number' })
+    }
+    const vol = +(volatility ?? 0.8)
+    if (!Number.isFinite(vol) || vol < 0) {
+      return res.status(400).json({ success: false, message: 'volatility must be zero or more' })
+    }
+    const dec = Math.trunc(+(decimals ?? 2))
+    if (!Number.isFinite(dec) || dec < 0 || dec > 8) {
+      return res.status(400).json({ success: false, message: 'decimals must be between 0 and 8' })
+    }
     const coin = await prisma.marketData.create({
       data: {
         symbol: s,
@@ -24,8 +36,8 @@ router.post('/coins', authenticateToken, requireAdmin, async (req, res, next) =>
         price: p,
         manualPrice: p,
         open24h: p,
-        volatility: +(volatility ?? 0.8),
-        decimals: +(decimals ?? 2),
+        volatility: vol,
+        decimals: dec,
         autoSync: autoSync ?? false,
       },
     })
@@ -44,8 +56,8 @@ router.post('/coins/:symbol/price', authenticateToken, requireAdmin, async (req,
 
     const old = c.manualPrice ?? c.price
     const price = +req.body.price
-    if (!Number.isFinite(price)) {
-      return res.status(400).json({ success: false, message: 'invalid price' })
+    if (!Number.isFinite(price) || price <= 0) {
+      return res.status(400).json({ success: false, message: 'price must be a positive number' })
     }
     const open = c.open24h || price
     const updated = await prisma.marketData.update({
@@ -80,8 +92,14 @@ router.post('/prices/batch', authenticateToken, requireAdmin, async (req, res, n
       const c = await prisma.marketData.findUnique({ where: { symbol } })
       if (!c) continue
       const base = c.manualPrice ?? c.price
+      const delta = it.deltaPct ?? 0
       const price =
-        it.price != null ? +it.price : +(base * (1 + (it.deltaPct ?? 0) / 100)).toFixed(c.decimals)
+        it.price != null ? +it.price : +(base * (1 + delta / 100)).toFixed(c.decimals)
+      // Every market must keep a usable positive reference; a bad batch item is
+      // reported instead of silently writing a broken price
+      if (!Number.isFinite(price) || price <= 0) {
+        return res.status(400).json({ success: false, message: `invalid price for ${symbol}` })
+      }
       const open = c.open24h || price
       const updated = await prisma.marketData.update({
         where: { symbol },
@@ -150,7 +168,8 @@ router.get('/coins', authenticateToken, requireAdmin, async (req, res, next) => 
       coins: rows.map((r) => ({
         symbol: r.symbol,
         name: r.name,
-        price: r.manualPrice ?? r.price,
+        // Last traded price is what the venue publishes; manualPrice is only the operator anchor
+        price: r.price > 0 ? r.price : r.manualPrice ?? 0,
         manualPrice: r.manualPrice,
         controlled: r.manualPrice != null,
         autoSync: r.autoSync,

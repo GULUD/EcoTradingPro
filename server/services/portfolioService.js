@@ -239,7 +239,8 @@ class PortfolioService {
     if (!holdings.length) {
       return {
         var95: null,
-        concentrationRisk: 0,
+        // No position means concentration cannot be measured; 0 would read as "safe"
+        concentrationRisk: null,
         correlationRisk: null,
         leverageRatio: 1,
         betaToMarket: null,
@@ -253,7 +254,8 @@ class PortfolioService {
     const series = await returnsBySymbol(weights.map((w) => w.asset))
 
     // Parametric 1-day 95% VaR from each asset's own daily volatility; cross
-    // correlations are ignored, so the figure is a conservative upper bound
+    // correlations are ignored, so this is a lower bound rather than a full
+    // portfolio estimate. It only appears when at least one series is long enough.
     let variance = 0
     let measured = 0
     for (const w of weights) {

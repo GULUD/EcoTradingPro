@@ -11,24 +11,43 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const OPEN_REFRESH_MS = 60 * 1000
 
 let openCache = new Map()
+let volumeCache = new Map()
 let openCacheAt = 0
 
 // The 24h reference must roll forward or "change24h" silently becomes
 // "change since the first fill"; the oldest fill inside the window is the open.
-async function refreshOpens(coins) {
+// Volume had the same problem: the stored counter only grew, so it reported
+// lifetime volume under a 24h label.
+async function refreshRolling(coins) {
   const since = BigInt(Date.now() - DAY_MS)
   const next = new Map()
-  await Promise.all(
-    coins.map(async (coin) => {
-      const first = await prisma.trade.findFirst({
-        where: { symbol: coin.symbol, time: { gte: since } },
-        orderBy: { time: 'asc' },
-        select: { price: true },
+  const volumes = new Map()
+  const [firstRows, volumeRows] = await Promise.all([
+    Promise.all(
+      coins.map(async (coin) => {
+        const first = await prisma.trade.findFirst({
+          where: { symbol: coin.symbol, time: { gte: since } },
+          orderBy: { time: 'asc' },
+          select: { symbol: true, price: true },
+        })
+        return first
       })
-      if (first && first.price > 0) next.set(coin.symbol, first.price)
-    })
-  )
+    ),
+    prisma.$queryRaw`
+      SELECT symbol, SUM(size * price) AS volume
+      FROM "Trade"
+      WHERE time >= ${since}
+      GROUP BY symbol`,
+  ])
+  for (const first of firstRows) {
+    if (first && first.price > 0) next.set(first.symbol, first.price)
+  }
+  for (const row of volumeRows) {
+    const volume = Number(row.volume)
+    if (Number.isFinite(volume) && volume > 0) volumes.set(row.symbol, volume)
+  }
   openCache = next
+  volumeCache = volumes
   openCacheAt = Date.now()
 }
 
@@ -37,7 +56,7 @@ async function refreshOpens(coins) {
 async function tickPrices(io) {
   const coins = await prisma.marketData.findMany({ where: { delisted: false } })
   const now = Date.now()
-  if (now - openCacheAt > OPEN_REFRESH_MS) await refreshOpens(coins)
+  if (now - openCacheAt > OPEN_REFRESH_MS) await refreshRolling(coins)
 
   const changed = []
   for (const c of coins) {
@@ -46,13 +65,15 @@ async function tickPrices(io) {
     // Markets that did not trade in the window keep their stored reference
     const open = openCache.get(c.symbol) || c.open24h || price
     const change24h = +(((price - open) / open) * 100).toFixed(2)
-    if (change24h === c.change24h && open === c.open24h) continue
+    const volume24h = +(volumeCache.get(c.symbol) || 0).toFixed(8)
+    if (change24h === c.change24h && open === c.open24h && volume24h === c.volume24h) continue
     await prisma.marketData.update({
       where: { symbol: c.symbol },
-      data: { change24h, open24h: open },
+      data: { change24h, open24h: open, volume24h },
     })
     c.change24h = change24h
     c.open24h = open
+    c.volume24h = volume24h
     changed.push({ symbol: c.symbol, price, change24h })
   }
 

@@ -272,7 +272,9 @@ function AdminDashboard() {
                   <UserRound className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium">{user?.name || 'Admin User'}</p>
+                  <p className="text-sm font-medium">
+                    {[user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.name || 'Admin User'}
+                  </p>
                   <p className="text-xs text-green-400 flex items-center">
                     <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
                     Online
@@ -607,15 +609,6 @@ function AdminDashboard() {
           </div>
         </div>
       )}
-
-      <style jsx>{`
-        .primary { color: #5D5CDE; }
-        .bg-primary { background-color: #5D5CDE; }
-        .border-primary { border-color: #5D5CDE; }
-        .text-primary { color: #5D5CDE; }
-        .from-primary { --tw-gradient-from: #5D5CDE; }
-        .to-primary { --tw-gradient-to: #5D5CDE; }
-      `}</style>
     </div>
   )
 }

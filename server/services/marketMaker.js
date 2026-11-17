@@ -12,17 +12,27 @@ const NEAR = 0.014
 const r = (n, d) => +Number(n).toFixed(d)
 const best = (rows, dir) => rows.reduce((m, o) => (m === 0 ? o.price : dir === 'max' ? Math.max(m, o.price) : Math.min(m, o.price)), 0)
 
+// House quotes carry no user funds and no trade history, so replacing them with
+// a delete keeps the order table from growing by thousands of dead rows a day.
+const PURGE_MS = 30 * 60 * 1000
+let lastPurge = 0
+
 async function cancelHouse(rows) {
   if (!rows.length) return
-  await prisma.order.updateMany({
-    where: { id: { in: rows.map((o) => o.id) }, status: { in: ['open', 'partial'] } },
-    data: { status: 'canceled' },
+  await prisma.order.deleteMany({
+    where: { id: { in: rows.map((o) => o.id) }, house: true, status: { in: ['open', 'partial'] } },
   })
 }
 
 async function tick(io) {
   const coins = await prisma.marketData.findMany({ where: { delisted: false } })
   const touched = new Set()
+
+  // Old terminal house rows are pure noise for the book and order history
+  if (Date.now() - lastPurge > PURGE_MS) {
+    lastPurge = Date.now()
+    await prisma.order.deleteMany({ where: { house: true, status: { in: ['canceled', 'filled'] } } })
+  }
 
   for (const c of coins) {
     const center = c.price > 0 ? c.price : c.manualPrice
