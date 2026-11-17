@@ -36,54 +36,53 @@ router.put('/users/:userId/balance', authenticateToken, requireAdmin, async (req
     }
     const target = +balance.toFixed(8)
 
-    // Applied as a delta inside one serializable transaction so concurrent fills are not overwritten
+    // Lock the row before reading: the matching engine credits the same account,
+    // so a read-then-write would otherwise overwrite a fill that landed in between
     const adjust = () =>
-      prisma.$transaction(
-        async (tx) => {
-          const cur = await tx.user.findUnique({ where: { id: userId } })
-          if (!cur) return null
-          const delta = +(target - cur.balance).toFixed(8)
-          const u = await tx.user.update({ where: { id: userId }, data: { balance: { increment: delta } } })
+      prisma.$transaction(async (tx) => {
+        const locked = await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`
+        if (!locked.length) return null
+        const cur = await tx.user.findUnique({ where: { id: userId } })
+        const delta = +(target - cur.balance).toFixed(8)
+        const u = await tx.user.update({ where: { id: userId }, data: { balance: { increment: delta } } })
 
-          await tx.transaction.create({
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: 'admin_adjust',
+            amount: delta,
+            balanceBefore: cur.balance,
+            balanceAfter: u.balance,
+            reason: 'admin set balance',
+            operator: req.user.email,
+            ts: BigInt(Date.now()),
+          },
+        })
+
+        // Supply is derived from issuance records, so a manual adjustment must
+        // be booked like a mint or burn or the totals drift away from balances
+        if (Math.abs(delta) > 1e-9) {
+          await tx.guluIssue.create({
             data: {
+              type: delta > 0 ? 'mint' : 'burn',
+              amount: Math.abs(delta),
               userId,
-              type: 'admin_adjust',
-              amount: delta,
-              balanceBefore: cur.balance,
-              balanceAfter: u.balance,
-              reason: 'admin set balance',
               operator: req.user.email,
+              note: 'admin set balance',
               ts: BigInt(Date.now()),
             },
           })
-
-          // Supply is derived from issuance records, so a manual adjustment must
-          // be booked like a mint or burn or the totals drift away from balances
-          if (Math.abs(delta) > 1e-9) {
-            await tx.guluIssue.create({
-              data: {
-                type: delta > 0 ? 'mint' : 'burn',
-                amount: Math.abs(delta),
-                userId,
-                operator: req.user.email,
-                note: 'admin set balance',
-                ts: BigInt(Date.now()),
-              },
-            })
-          }
-          return u
-        },
-        { isolationLevel: 'Serializable' }
-      )
+        }
+        return u
+      })
 
     let updated
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         updated = await adjust()
         break
       } catch (e) {
-        if (e.code === 'P2034' && attempt === 0) continue
+        if ((e.code === 'P2034' || e.code === 'P2028') && attempt < 2) continue
         throw e
       }
     }

@@ -9,6 +9,23 @@ const router = express.Router()
 
 const asArray = (v) => (Array.isArray(v) ? v : [])
 
+// Watchlist and alerts live in JSON columns. A plain read-modify-write loses
+// concurrent edits, so lock the row and mutate the freshest copy instead.
+const mutateJsonList = (userId, key, mutate) =>
+  prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`
+    if (!rows.length) return { missing: true }
+    const u = await tx.user.findUnique({
+      where: { id: userId },
+      select: { watchlist: true, priceAlerts: true },
+    })
+    const outcome = mutate(asArray(u ? u[key] : null))
+    if (outcome.list) {
+      await tx.user.update({ where: { id: userId }, data: { [key]: outcome.list } })
+    }
+    return outcome
+  })
+
 const toTradeDto = (t) => ({
   id: t.id,
   side: t.side,
@@ -197,12 +214,13 @@ router.post('/watchlist', authenticateToken, requireUser, async (req, res, next)
     if (!coin || coin.delisted) {
       return res.status(400).json({ success: false, error: 'market not available' })
     }
-    const list = asArray(req.user.watchlist)
-    if (list.some((i) => i.asset === symbol)) {
-      return res.status(400).json({ success: false, error: 'Asset already in watchlist' })
-    }
-    list.push({ asset: symbol, addedAt: new Date().toISOString() })
-    await prisma.user.update({ where: { id: req.user.id }, data: { watchlist: list } })
+    const outcome = await mutateJsonList(req.user.id, 'watchlist', (fresh) => {
+      if (fresh.some((i) => i.asset === symbol)) {
+        return { error: 'Asset already in watchlist' }
+      }
+      return { list: [...fresh, { asset: symbol, addedAt: new Date().toISOString() }] }
+    })
+    if (outcome.error) return res.status(400).json({ success: false, error: outcome.error })
     res.json({ success: true })
   } catch (e) {
     next(e)
@@ -211,8 +229,9 @@ router.post('/watchlist', authenticateToken, requireUser, async (req, res, next)
 
 router.delete('/watchlist/:asset', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    const list = asArray(req.user.watchlist).filter((i) => i.asset !== req.params.asset)
-    await prisma.user.update({ where: { id: req.user.id }, data: { watchlist: list } })
+    await mutateJsonList(req.user.id, 'watchlist', (fresh) => ({
+      list: fresh.filter((i) => i.asset !== req.params.asset),
+    }))
     res.json({ success: true })
   } catch (e) {
     next(e)
@@ -235,7 +254,6 @@ router.post('/alerts', authenticateToken, requireUser, async (req, res, next) =>
     if (!coin || coin.delisted) {
       return res.status(400).json({ success: false, error: 'market not available' })
     }
-    const list = asArray(req.user.priceAlerts)
     const alert = {
       // Timestamp ids collided when two alerts were created in the same millisecond
       id: crypto.randomUUID(),
@@ -245,8 +263,7 @@ router.post('/alerts', authenticateToken, requireUser, async (req, res, next) =>
       status: 'active',
       createdAt: new Date().toISOString(),
     }
-    list.push(alert)
-    await prisma.user.update({ where: { id: req.user.id }, data: { priceAlerts: list } })
+    await mutateJsonList(req.user.id, 'priceAlerts', (fresh) => ({ list: [...fresh, alert] }))
     res.json({ success: true, alert })
   } catch (e) {
     next(e)
@@ -255,8 +272,9 @@ router.post('/alerts', authenticateToken, requireUser, async (req, res, next) =>
 
 router.delete('/alerts/:alertId', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    const list = asArray(req.user.priceAlerts).filter((a) => a.id !== req.params.alertId)
-    await prisma.user.update({ where: { id: req.user.id }, data: { priceAlerts: list } })
+    await mutateJsonList(req.user.id, 'priceAlerts', (fresh) => ({
+      list: fresh.filter((a) => a.id !== req.params.alertId),
+    }))
     res.json({ success: true })
   } catch (e) {
     next(e)

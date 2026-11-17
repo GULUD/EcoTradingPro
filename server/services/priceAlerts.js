@@ -29,27 +29,37 @@ async function checkPriceAlerts(io) {
     }
     if (!hits.size) continue
 
-    // Re-read before writing so an alert created since the snapshot is kept
-    const fresh = await prisma.user.findUnique({ where: { id: row.id }, select: { priceAlerts: true } })
-    const current = Array.isArray(fresh?.priceAlerts) ? fresh.priceAlerts : []
-    let changed = false
-    const next = current.map((alert) => {
-      if (alert.status !== 'active' || !hits.has(alert.id)) return alert
-      changed = true
-      const price = hits.get(alert.id)
-      if (io) {
-        io.to(`user-${row.id}`).emit('notification', {
-          id: `alert-${alert.id}`,
-          type: 'price',
-          title: `${alert.asset} price alert`,
-          message: `${alert.asset} reached ${price} GULU (${alert.type} ${alert.price})`,
-          timestamp: Date.now(),
-        })
-      }
-      return { ...alert, status: 'triggered', triggeredAt: new Date().toISOString(), triggeredPrice: price }
+    // The user may add or remove alerts while this sweep runs, so lock the row
+    // and apply the trigger flags to the freshest copy before notifying.
+    const fired = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${row.id} FOR UPDATE`
+      if (!locked.length) return []
+      const fresh = await tx.user.findUnique({ where: { id: row.id }, select: { priceAlerts: true } })
+      const current = Array.isArray(fresh?.priceAlerts) ? fresh.priceAlerts : []
+      const events = []
+      let changed = false
+      const next = current.map((alert) => {
+        if (alert.status !== 'active' || !hits.has(alert.id)) return alert
+        changed = true
+        const price = hits.get(alert.id)
+        events.push({ alert, price })
+        return { ...alert, status: 'triggered', triggeredAt: new Date().toISOString(), triggeredPrice: price }
+      })
+      if (changed) await tx.user.update({ where: { id: row.id }, data: { priceAlerts: next } })
+      return events
     })
 
-    if (changed) await prisma.user.update({ where: { id: row.id }, data: { priceAlerts: next } })
+    // Emit only after commit so a rolled back transaction never notifies twice
+    for (const { alert, price } of fired) {
+      if (!io) break
+      io.to(`user-${row.id}`).emit('notification', {
+        id: `alert-${alert.id}`,
+        type: 'price',
+        title: `${alert.asset} price alert`,
+        message: `${alert.asset} reached ${price} GULU (${alert.type} ${alert.price})`,
+        timestamp: Date.now(),
+      })
+    }
   }
 }
 
