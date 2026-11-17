@@ -4,6 +4,22 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import axios from '../../utils/axios'
 import NewsManagement from './NewsManagement'
+import { CoinManagement, BotFormation, PriceChart } from './AdminControls'
+import {
+  Home,
+  Users,
+  Wallet,
+  BarChart3,
+  Newspaper,
+  Bell,
+  Settings,
+  UserRound,
+  Sun,
+  Moon,
+  TrendingUp,
+  Zap,
+  Megaphone,
+} from 'lucide-react'
 
 // Placeholder for AdminDashboardHome and UserManagement components if they were defined elsewhere
 const AdminDashboardHome = () => <div>Dashboard Content</div>;
@@ -121,7 +137,7 @@ function AdminDashboard() {
                   : 'hover:bg-gray-800/50 text-gray-300 hover:text-white'
               }`}
             >
-              <span className="text-xl mr-4">🏠</span>
+              <Home className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">Dashboard</span>}
             </button>
             <button
@@ -132,7 +148,7 @@ function AdminDashboard() {
                   : 'hover:bg-gray-800/50 text-gray-300 hover:text-white'
               }`}
             >
-              <span className="text-xl mr-4">👥</span>
+              <Users className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">User Management</span>}
             </button>
             <button
@@ -143,7 +159,7 @@ function AdminDashboard() {
                   : 'hover:bg-gray-800/50 text-gray-300 hover:text-white'
               }`}
             >
-              <span className="text-xl mr-4">💰</span>
+              <Wallet className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">Balance Control</span>}
             </button>
             <button
@@ -154,7 +170,7 @@ function AdminDashboard() {
                   : 'hover:bg-gray-800/50 text-gray-300 hover:text-white'
               }`}
             >
-              <span className="text-xl mr-4">📊</span>
+              <BarChart3 className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">Analytics</span>}
             </button>
             <button
@@ -165,15 +181,48 @@ function AdminDashboard() {
                   : 'hover:bg-gray-800/50 text-gray-300 hover:text-white'
               }`}
             >
-              <span className="text-xl mr-4">📰</span>
+              <Newspaper className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">News Manager</span>}
             </button>
+            <button
+              onClick={() => setActiveTab('coins')}
+              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-300 ${
+                activeTab === 'coins'
+                  ? 'bg-primary/20 text-primary border border-primary/30'
+                  : 'hover:bg-gray-800/50 text-gray-300 hover:text-white'
+              }`}
+            >
+              <Wallet className="w-5 h-5 mr-4" />
+              {!sidebarCollapsed && <span className="font-medium">Coin Control</span>}
+            </button>
+            <button
+              onClick={() => setActiveTab('bots')}
+              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-300 ${
+                activeTab === 'bots'
+                  ? 'bg-primary/20 text-primary border border-primary/30'
+                  : 'hover:bg-gray-800/50 text-gray-300 hover:text-white'
+              }`}
+            >
+              <Zap className="w-5 h-5 mr-4" />
+              {!sidebarCollapsed && <span className="font-medium">Bot Formation</span>}
+            </button>
+            <button
+              onClick={() => setActiveTab('price')}
+              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-300 ${
+                activeTab === 'price'
+                  ? 'bg-primary/20 text-primary border border-primary/30'
+                  : 'hover:bg-gray-800/50 text-gray-300 hover:text-white'
+              }`}
+            >
+              <TrendingUp className="w-5 h-5 mr-4" />
+              {!sidebarCollapsed && <span className="font-medium">Price Chart</span>}
+            </button>
             <button className="w-full flex items-center px-4 py-3 rounded-xl hover:bg-gray-800/50 text-gray-300 hover:text-white transition-all duration-300">
-              <span className="text-xl mr-4">🔔</span>
+              <Bell className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">Notifications</span>}
             </button>
             <button className="w-full flex items-center px-4 py-3 rounded-xl hover:bg-gray-800/50 text-gray-300 hover:text-white transition-all duration-300">
-              <span className="text-xl mr-4">⚙️</span>
+              <Settings className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">Settings</span>}
             </button>
           </div>
@@ -184,8 +233,8 @@ function AdminDashboard() {
           <div className="absolute bottom-6 left-3 right-3">
             <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-xl p-4">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center animate-bounce">
-                  <span className="text-white text-sm">👤</span>
+                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                  <UserRound className="w-5 h-5 text-white" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">{user?.name || 'Admin User'}</p>
@@ -225,7 +274,7 @@ function AdminDashboard() {
                 onClick={toggleTheme}
                 className="p-2 rounded-xl hover:bg-gray-700/50 transition-colors"
               >
-                {theme === 'dark' ? '☀️' : '🌙'}
+                {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
 
               {/* Real-time indicator */}
@@ -270,10 +319,10 @@ function AdminDashboard() {
                 <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6 hover:transform hover:-translate-y-1 transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
-                      <span className="text-2xl">👥</span>
+                      <Users className="w-6 h-6 text-blue-400" />
                     </div>
                     <div className="text-green-400 text-sm font-medium flex items-center">
-                      <span className="mr-1">↗</span> +12%
+                      <TrendingUp className="w-4 h-4 mr-1" /> +12%
                     </div>
                   </div>
                   <h3 className="text-2xl font-bold mb-1">{users.length}</h3>
@@ -287,10 +336,10 @@ function AdminDashboard() {
                 <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6 hover:transform hover:-translate-y-1 transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div className="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center">
-                      <span className="text-2xl">📈</span>
+                      <TrendingUp className="w-6 h-6 text-green-400" />
                     </div>
                     <div className="text-green-400 text-sm font-medium flex items-center">
-                      <span className="mr-1">↗</span> +8%
+                      <TrendingUp className="w-4 h-4 mr-1" /> +8%
                     </div>
                   </div>
                   <h3 className="text-2xl font-bold mb-1">{users.filter(u => u.isActive).length}</h3>
@@ -304,10 +353,10 @@ function AdminDashboard() {
                 <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6 hover:transform hover:-translate-y-1 transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center">
-                      <span className="text-2xl">💰</span>
+                      <Wallet className="w-6 h-6 text-purple-400" />
                     </div>
                     <div className="text-green-400 text-sm font-medium flex items-center">
-                      <span className="mr-1">↗</span> +23%
+                      <TrendingUp className="w-4 h-4 mr-1" /> +23%
                     </div>
                   </div>
                   <h3 className="text-2xl font-bold mb-1">${users.reduce((sum, user) => sum + (user.balance || 0), 0).toLocaleString()}</h3>
@@ -321,10 +370,10 @@ function AdminDashboard() {
                 <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6 hover:transform hover:-translate-y-1 transition-all duration-300">
                   <div className="flex items-center justify-between mb-4">
                     <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center">
-                      <span className="text-2xl">⚡</span>
+                      <Zap className="w-6 h-6 text-orange-400" />
                     </div>
                     <div className="text-green-400 text-sm font-medium flex items-center">
-                      <span className="mr-1">✓</span> Healthy
+                      Healthy
                     </div>
                   </div>
                   <h3 className="text-2xl font-bold mb-1">99.9%</h3>
@@ -341,25 +390,25 @@ function AdminDashboard() {
                   onClick={() => setActiveTab('balance')}
                   className="w-full p-6 bg-gradient-to-r from-blue-600 to-blue-500 rounded-xl hover:shadow-lg hover:shadow-blue-500/25 transition-all duration-300 flex items-center justify-center"
                 >
-                  <span className="text-2xl mr-3">💰</span>
+                  <Wallet className="w-5 h-5 mr-3" />
                   <span className="font-medium">Simulate Balance</span>
                 </button>
                 <button className="w-full p-6 bg-gradient-to-r from-green-600 to-green-500 rounded-xl hover:shadow-lg hover:shadow-green-500/25 transition-all duration-300 flex items-center justify-center">
-                  <span className="text-2xl mr-3">📢</span>
+                  <Megaphone className="w-5 h-5 mr-3" />
                   <span className="font-medium">Send Announcement</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('users')}
                   className="w-full p-6 bg-gradient-to-r from-purple-600 to-purple-500 rounded-xl hover:shadow-lg hover:shadow-purple-500/25 transition-all duration-300 flex items-center justify-center"
                 >
-                  <span className="text-2xl mr-3">👥</span>
+                  <Users className="w-5 h-5 mr-3" />
                   <span className="font-medium">Manage Users</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('analytics')}
                   className="w-full p-6 bg-gradient-to-r from-orange-600 to-orange-500 rounded-xl hover:shadow-lg hover:shadow-orange-500/25 transition-all duration-300 flex items-center justify-center"
                 >
-                  <span className="text-2xl mr-3">📊</span>
+                  <BarChart3 className="w-5 h-5 mr-3" />
                   <span className="font-medium">View Reports</span>
                 </button>
               </div>
@@ -443,6 +492,10 @@ function AdminDashboard() {
               </div>
             </div>
           )}
+
+          {activeTab === 'coins' && <CoinManagement />}
+          {activeTab === 'bots' && <BotFormation />}
+          {activeTab === 'price' && <PriceChart />}
         </main>
       </div>
 

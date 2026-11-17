@@ -1,13 +1,11 @@
-
 import axios from 'axios'
+import { API_BASE } from './api'
 
-// Create axios instance with base configuration
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000',
+  baseURL: API_BASE,
   timeout: 10000,
 })
 
-// Add auth token to requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) {
@@ -16,7 +14,6 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Handle auth errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {

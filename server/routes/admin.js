@@ -1,191 +1,194 @@
 const express = require('express')
-const User = require('../models/User')
-const News = require('../models/News')
-const { authenticateToken } = require('./auth')
+const prisma = require('../db')
+const { authenticateToken, requireAdmin } = require('../middleware/auth')
 
 const router = express.Router()
 
-// Middleware to check admin role
-const requireAdmin = (req, res, next) => {
-  if (req.userRole !== 'admin') {
-    return res.status(403).json({ error: 'Admin access required' })
-  }
-  next()
-}
+const toUserDto = (u) => ({
+  _id: u.id,
+  id: u.id,
+  firstName: u.firstName,
+  lastName: u.lastName,
+  email: u.email,
+  balance: u.balance,
+  isActive: u.isActive,
+  lastLogin: u.lastLogin,
+  createdAt: u.createdAt,
+})
 
-// Get all users
-router.get('/users', authenticateToken, requireAdmin, async (req, res) => {
+const toNewsDto = (n) => ({ ...n, _id: n.id })
+
+router.get('/users', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const users = await User.find({}, '-password').sort({ createdAt: -1 })
-    res.json(users)
-  } catch (error) {
-    console.error('Error fetching users:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    const users = await prisma.user.findMany({ orderBy: { createdAt: 'desc' } })
+    res.json(users.map(toUserDto))
+  } catch (e) {
+    next(e)
   }
 })
 
-// Update user balance
-router.put('/users/:userId/balance', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/users/:userId/balance', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
     const { userId } = req.params
     const { balance } = req.body
-
     if (typeof balance !== 'number' || balance < 0) {
-      return res.status(400).json({ error: 'Invalid balance amount' })
+      return res.status(400).json({ success: false, error: 'Invalid balance amount' })
     }
 
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { balance },
-      { new: true, select: '-password' }
-    )
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) return res.status(404).json({ success: false, error: 'User not found' })
 
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' })
+    const target = +balance.toFixed(2)
+    const updated = await prisma.user.update({ where: { id: userId }, data: { balance: target } })
+
+    await prisma.transaction.create({
+      data: {
+        userId,
+        type: 'admin_adjust',
+        amount: +(target - user.balance).toFixed(2),
+        balanceBefore: user.balance,
+        balanceAfter: updated.balance,
+        reason: 'admin set balance',
+        operator: req.user.email,
+        ts: BigInt(Date.now()),
+      },
+    })
+
+    const io = req.app.get('io')
+    if (io) {
+      io.to(`user-${userId}`).emit('balance:update', { balance: updated.balance })
+      io.to(`user-${userId}`).emit('balance-update', {
+        message: `Your balance has been updated to ${updated.balance.toFixed(2)}.`,
+        newBalance: updated.balance,
+      })
     }
 
-    res.json(user)
-  } catch (error) {
-    console.error('Error updating balance:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    res.json(toUserDto(updated))
+  } catch (e) {
+    next(e)
   }
 })
 
-// Toggle user active status
-router.put('/users/:userId/status', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/users/:userId/status', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
     const { userId } = req.params
     const { isActive } = req.body
-
-    const user = await User.findByIdAndUpdate(
-      userId,
-      { isActive },
-      { new: true, select: '-password' }
-    )
-
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' })
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'isActive must be boolean' })
     }
+    const exists = await prisma.user.findUnique({ where: { id: userId } })
+    if (!exists) return res.status(404).json({ success: false, error: 'User not found' })
 
-    res.json(user)
-  } catch (error) {
-    console.error('Error updating user status:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    const updated = await prisma.user.update({ where: { id: userId }, data: { isActive } })
+    const io = req.app.get('io')
+    if (io) {
+      io.to(`user-${userId}`).emit('status-update', {
+        message: `Your account status has been updated to ${isActive ? 'Active' : 'Inactive'}.`,
+        isActive,
+      })
+    }
+    res.json(toUserDto(updated))
+  } catch (e) {
+    next(e)
   }
 })
 
-// Get platform statistics
-router.get('/stats', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/stats', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const totalUsers = await User.countDocuments()
-    const activeUsers = await User.countDocuments({ isActive: true })
-    const totalBalance = await User.aggregate([
-      { $group: { _id: null, total: { $sum: '$balance' } } }
+    const [totalUsers, activeUsers, aggregate] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { isActive: true } }),
+      prisma.user.aggregate({ _sum: { balance: true } }),
     ])
-
     res.json({
       totalUsers,
       activeUsers,
-      totalBalance: totalBalance[0]?.total || 0,
-      systemUptime: process.uptime()
+      totalBalance: aggregate._sum.balance || 0,
+      systemUptime: process.uptime(),
     })
-  } catch (error) {
-    console.error('Error fetching stats:', error)
-    res.status(500).json({ error: 'Internal server error' })
+  } catch (e) {
+    next(e)
   }
 })
 
-// --- News Management Endpoints ---
-
-// Create a new news article
-router.post('/news', authenticateToken, requireAdmin, async (req, res) => {
+router.post('/news', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const { title, content, author } = req.body
-    const newNews = new News({
-      title,
-      content,
-      author: author || 'Admin' // Default author if not provided
+    const { title, content, author, category, priority, isPublished } = req.body
+    if (!title) return res.status(400).json({ success: false, message: 'title required' })
+    const news = await prisma.news.create({
+      data: {
+        title,
+        content: content || '',
+        author: author || req.user.name,
+        category: category || null,
+        priority: Number.isFinite(+priority) ? +priority : 0,
+        isPublished: isPublished !== false,
+      },
     })
-    await newNews.save()
-    res.status(201).json(newNews)
-  } catch (error) {
-    console.error('Error creating news:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    res.status(201).json(toNewsDto(news))
+  } catch (e) {
+    next(e)
   }
 })
 
-// Get all news articles (published and unpublished)
-router.get('/news', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/news', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const news = await News.find().sort({ createdAt: -1 })
-    res.json(news)
-  } catch (error) {
-    console.error('Error fetching news:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    const news = await prisma.news.findMany({ orderBy: { createdAt: 'desc' } })
+    res.json(news.map(toNewsDto))
+  } catch (e) {
+    next(e)
   }
 })
 
-// Get a single news article by ID
-router.get('/news/:newsId', authenticateToken, requireAdmin, async (req, res) => {
+router.get('/news/:newsId', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const { newsId } = req.params
-    const news = await News.findById(newsId)
-    if (!news) {
-      return res.status(404).json({ error: 'News not found' })
-    }
-    res.json(news)
-  } catch (error) {
-    console.error('Error fetching news:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    const news = await prisma.news.findUnique({ where: { id: req.params.newsId } })
+    if (!news) return res.status(404).json({ success: false, message: 'News not found' })
+    res.json(toNewsDto(news))
+  } catch (e) {
+    next(e)
   }
 })
 
-// Update a news article
-router.put('/news/:newsId', authenticateToken, requireAdmin, async (req, res) => {
+router.put('/news/:newsId', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const { newsId } = req.params
-    const { title, content, isPublished } = req.body
+    const { title, content, isPublished, category, priority } = req.body
+    const data = {}
+    if (title !== undefined) data.title = title
+    if (content !== undefined) data.content = content
+    if (isPublished !== undefined) data.isPublished = isPublished
+    if (category !== undefined) data.category = category
+    if (priority !== undefined) data.priority = +priority
 
-    const updatedNews = await News.findByIdAndUpdate(
-      newsId,
-      { title, content, isPublished },
-      { new: true }
-    )
-
-    if (!updatedNews) {
-      return res.status(404).json({ error: 'News not found' })
-    }
-    res.json(updatedNews)
-  } catch (error) {
-    console.error('Error updating news:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    const news = await prisma.news.update({ where: { id: req.params.newsId }, data })
+    res.json(toNewsDto(news))
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ success: false, message: 'News not found' })
+    next(e)
   }
 })
 
-// Delete a news article
-router.delete('/news/:newsId', authenticateToken, requireAdmin, async (req, res) => {
+router.patch('/news/:newsId/publish', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const { newsId } = req.params
-    const deletedNews = await News.findByIdAndDelete(newsId)
-
-    if (!deletedNews) {
-      return res.status(404).json({ error: 'News not found' })
-    }
-    res.json({ message: 'News article deleted successfully' })
-  } catch (error) {
-    console.error('Error deleting news:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    const { isPublished } = req.body
+    const news = await prisma.news.update({
+      where: { id: req.params.newsId },
+      data: { isPublished: isPublished !== false },
+    })
+    res.json(toNewsDto(news))
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ success: false, message: 'News not found' })
+    next(e)
   }
 })
 
-// Get published news articles for public view
-router.get('/news/published', async (req, res) => {
+router.delete('/news/:newsId', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const publishedNews = await News.find({ isPublished: true }).sort({ createdAt: -1 })
-    res.json(publishedNews)
-  } catch (error) {
-    console.error('Error fetching published news:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    await prisma.news.delete({ where: { id: req.params.newsId } })
+    res.json({ success: true, message: 'News article deleted successfully' })
+  } catch (e) {
+    if (e.code === 'P2025') return res.status(404).json({ success: false, message: 'News not found' })
+    next(e)
   }
 })
 

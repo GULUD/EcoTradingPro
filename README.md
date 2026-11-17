@@ -77,3 +77,44 @@ EcoTradingPro dashboard mockups coming soon…
 📄 License
 
 MIT License – free to use and modify.
+
+
+---
+
+## Deployment
+
+Frontend: Cloudflare Pages (static build in dist, SPA fallback via public/_redirects)
+Backend: Render Web Service (Node, API + Socket.IO)
+Database: Neon Serverless Postgres
+
+### Render environment
+
+| Key | Value |
+| --- | --- |
+| DATABASE_URL | Neon pooled connection, with ?sslmode=require&pgbouncer=true&connection_limit=1 |
+| DIRECT_URL | Neon direct connection, with ?sslmode=require |
+| JWT_SECRET | output of openssl rand -hex 32 |
+| ALLOWED_ORIGINS | the Cloudflare Pages origin |
+| TRUST_PROXY | 1 |
+| ADMIN_EMAIL / ADMIN_PASSWORD | initial admin, seeded only when no admin exists |
+| PRICE_SOURCE | none |
+
+Build: npm install && npx prisma generate && npx prisma migrate deploy && node server/scripts/seedAdmin.js
+Start: node server/index.js
+Health check: /api/health
+
+Keep the service awake with an external uptime monitor pointing at /api/health every 10 minutes, otherwise the free instance sleeps and the price and bot timers stop.
+
+### Cloudflare Pages environment
+
+| Key | Value |
+| --- | --- |
+| VITE_API_BASE | https://your-service.onrender.com |
+| VITE_WS_BASE | https://your-service.onrender.com |
+
+Build: npm run build
+Output: dist
+
+## Compliance
+
+The admin panel can adjust user balances and move simulated prices. This capability is for local self-hosted simulation and testing only. Do not use it to solicit deposits from other people. Presenting fabricated market data to induce investment can be a criminal offence in many jurisdictions. This project provides no real asset matching, custody, or deposit and withdrawal channel.

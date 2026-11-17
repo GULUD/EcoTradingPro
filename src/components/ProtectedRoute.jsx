@@ -1,10 +1,10 @@
-
 import React from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
-function ProtectedRoute({ children, userType }) {
+function ProtectedRoute({ children, requiredRole }) {
   const { user, loading } = useAuth()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -14,9 +14,17 @@ function ProtectedRoute({ children, userType }) {
     )
   }
 
-  if (!user || user.userType !== userType) {
-    const redirectPath = userType === 'admin' ? '/admin/login' : '/auth/login'
+  if (!user) {
+    const redirectPath = requiredRole === 'admin' ? '/auth/admin' : '/auth/login'
     return <Navigate to={redirectPath} replace />
+  }
+
+  if (user.requireChange && location.pathname !== '/auth/force-change-password') {
+    return <Navigate to="/auth/force-change-password" replace />
+  }
+
+  if (requiredRole && user.role !== requiredRole) {
+    return <Navigate to={user.role === 'admin' ? '/admin/dashboard' : '/dashboard'} replace />
   }
 
   return children

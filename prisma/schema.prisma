@@ -1,62 +1,150 @@
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("POSTGRES_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Side {
+  buy
+  sell
+}
+
+enum TradeSource {
+  user
+  bot
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
-  balance   Float    @default(10000)
-  isActive  Boolean  @default(true)
-  role      String   @default("user")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  firstName          String
+  lastName           String
+  email              String   @unique
+  password           String
+  balance            Float    @default(10000)
+  isActive           Boolean  @default(true)
+  mustChangePassword Boolean  @default(false)
+  portfolio          Json     @default("{}")
+  orders             Json     @default("[]")
+  watchlist          Json     @default("[]")
+  priceAlerts        Json     @default("[]")
+  tradingBots        Json     @default("[]")
+  competitions       Json     @default("[]")
+  socialTrading      Json     @default("{}")
+  apiKeys            Json     @default("[]")
+  lastLogin          DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  @@map("users")
+  trades       Trade[]
+  transactions Transaction[]
+
+  @@index([isActive])
 }
 
 model Admin {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String?
-  role      String   @default("admin")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  password           String
+  name               String
+  firstName          String   @default("")
+  lastName           String   @default("")
+  role               String   @default("admin")
+  isActive           Boolean  @default(true)
+  permissions        String[] @default([])
+  mustChangePassword Boolean  @default(true)
+  lastLogin          DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
 
-  @@map("admins")
+model MarketData {
+  symbol      String    @id
+  name        String
+  price       Float     @default(0)
+  manualPrice Float?
+  autoSync    Boolean   @default(true)
+  volatility  Float     @default(1.0)
+  decimals    Int       @default(2)
+  open24h     Float     @default(0)
+  change24h   Float     @default(0)
+  volume24h   Float     @default(0)
+  delisted    Boolean   @default(false)
+  delistedAt  DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  trades Trade[]
+
+  @@index([delisted])
+}
+
+model Trade {
+  id      String      @id @default(cuid())
+  userId  String?
+  symbol  String
+  side    Side
+  size    Float
+  price   Float
+  pnl     Float       @default(0)
+  source  TradeSource @default(user)
+  botName String?
+  time    BigInt
+
+  user User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  coin MarketData @relation(fields: [symbol], references: [symbol], onDelete: Cascade)
+
+  @@index([symbol, time])
+  @@index([userId, time])
+}
+
+model Transaction {
+  id            String   @id @default(cuid())
+  userId        String
+  type          String
+  amount        Float
+  balanceBefore Float
+  balanceAfter  Float
+  reason        String?
+  operator      String?
+  fromUserId    String?
+  toUserId      String?
+  ts            BigInt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, ts])
+  @@index([type])
 }
 
 model News {
   id          String   @id @default(cuid())
   title       String
-  content     String
+  content     String?
   author      String?
+  category    String?
+  source      String?
   imageUrl    String?
+  priority    Int      @default(0)
+  views       Int      @default(0)
+  isPublished Boolean  @default(true)
   publishedAt DateTime @default(now())
   createdAt   DateTime @default(now())
 
-  @@map("news")
+  @@index([isPublished, publishedAt])
 }
 
 model Announcement {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
-  content     String
-  type        String   @default("info")
-  priority    String   @default("medium")
-  active      Boolean  @default(true)
+  content     String?
+  type        String    @default("info")
+  priority    String    @default("medium")
+  active      Boolean   @default(true)
+  targetUsers String    @default("all")
   expiresAt   DateTime?
-  targetUsers String   @default("all")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@map("announcements")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }

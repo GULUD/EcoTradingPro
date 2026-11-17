@@ -1,291 +1,347 @@
 const express = require('express')
-const User = require('../models/User')
-const { authenticateToken } = require('./auth')
+const prisma = require('../db')
+const { authenticateToken, requireUser } = require('../middleware/auth')
 
 const router = express.Router()
 
-// Get user profile and balance
-router.get('/profile', authenticateToken, async (req, res) => {
-  try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
+const asArray = (v) => (Array.isArray(v) ? v : [])
 
-    const user = await User.findById(req.user._id, '-password')
-    res.json(user)
-  } catch (error) {
-    console.error('Error fetching profile:', error)
-    res.status(500).json({ error: 'Internal server error' })
+const toTradeDto = (t) => ({
+  id: t.id,
+  side: t.side,
+  size: t.size,
+  price: t.price,
+  pnl: t.pnl,
+  time: Number(t.time),
+  symbol: t.symbol,
+  // legacy field names still read by Portfolio and OrderHistory
+  type: t.side,
+  asset: t.symbol,
+  quantity: t.size,
+  amount: t.size * t.price,
+  timestamp: Number(t.time),
+  status: 'completed',
+})
+
+router.get('/profile', authenticateToken, requireUser, async (req, res, next) => {
+  try {
+    const u = req.user
+    res.json({
+      _id: u.id,
+      id: u.id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      email: u.email,
+      balance: u.balance,
+      portfolio: u.portfolio,
+      watchlist: u.watchlist,
+      priceAlerts: u.priceAlerts,
+      tradingBots: u.tradingBots,
+      isActive: u.isActive,
+      createdAt: u.createdAt,
+    })
+  } catch (e) {
+    next(e)
   }
 })
 
-// Get user trading history
-router.get('/trades', authenticateToken, async (req, res) => {
+router.get('/trades', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
-
-    const user = await User.findById(req.user._id)
-    res.json(user.trades || [])
-  } catch (error) {
-    console.error('Error fetching trades:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    const trades = await prisma.trade.findMany({
+      where: { userId: req.user.id, source: 'user' },
+      orderBy: { time: 'desc' },
+      take: 200,
+    })
+    res.json(trades.map(toTradeDto))
+  } catch (e) {
+    next(e)
   }
 })
 
-// Execute a trade (simulation)
-router.post('/trades', authenticateToken, async (req, res) => {
+router.post('/trades', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
-
-    const { type, asset, amount, price, quantity } = req.body
-
-    // Validate trade data
+    const { type, asset, amount, price, quantity, orderType } = req.body
     if (!type || !asset || !amount || !price || !quantity) {
-      return res.status(400).json({ error: 'Missing required trade data' })
+      return res.status(400).json({ success: false, error: 'Missing required trade data' })
+    }
+    if (!['buy', 'sell'].includes(type)) {
+      return res.status(400).json({ success: false, error: 'Invalid trade type' })
     }
 
-    const user = await User.findById(req.user._id)
-
-    // Check if user has sufficient balance for buy orders
-    if (type === 'buy' && user.balance < amount) {
-      return res.status(400).json({ error: 'Insufficient balance' })
+    const symbol = String(asset).toUpperCase().split('/')[0]
+    const coin = await prisma.marketData.findUnique({ where: { symbol } })
+    if (!coin || coin.delisted) {
+      return res.status(400).json({ success: false, error: 'Market not available' })
     }
 
-    // Create trade record
-    const trade = {
-      id: Date.now().toString(),
-      type,
-      asset,
-      amount,
-      price,
-      quantity,
-      timestamp: new Date(),
-      status: 'completed'
+    const amt = +amount
+    const qty = +quantity
+    const px = +price
+    if (!(amt > 0) || !(qty > 0) || !(px > 0)) {
+      return res.status(400).json({ success: false, error: 'Invalid amount or price' })
     }
 
-    // Update user balance and portfolio
+    const before = req.user.balance
     if (type === 'buy') {
-      user.balance -= amount
-      user.portfolio[asset] = (user.portfolio[asset] || 0) + quantity
-    } else if (type === 'sell') {
-      user.balance += amount
-      user.portfolio[asset] = Math.max(0, (user.portfolio[asset] || 0) - quantity)
+      const r = await prisma.user.updateMany({
+        where: { id: req.user.id, balance: { gte: amt } },
+        data: { balance: { decrement: amt } },
+      })
+      if (r.count === 0) {
+        return res.status(400).json({ success: false, error: 'Insufficient balance' })
+      }
+    } else {
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { balance: { increment: amt } },
+      })
     }
 
-    user.trades = user.trades || []
-    user.trades.push(trade)
+    const fresh = await prisma.user.findUnique({ where: { id: req.user.id } })
+    const portfolio = { ...(fresh.portfolio || {}) }
+    portfolio[symbol] = Math.max(0, (portfolio[symbol] || 0) + (type === 'buy' ? qty : -qty))
+    const updated = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { portfolio },
+    })
 
-    await user.save()
+    const trade = await prisma.trade.create({
+      data: {
+        userId: req.user.id,
+        symbol,
+        side: type,
+        size: qty,
+        price: px,
+        pnl: 0,
+        source: 'user',
+        time: BigInt(Date.now()),
+      },
+    })
 
-    res.json({ success: true, trade, balance: user.balance, portfolio: user.portfolio })
-  } catch (error) {
-    console.error('Error executing trade:', error)
-    res.status(500).json({ error: 'Internal server error' })
-  }
-})
+    await prisma.transaction.create({
+      data: {
+        userId: req.user.id,
+        type: 'trade',
+        amount: type === 'buy' ? -amt : amt,
+        balanceBefore: before,
+        balanceAfter: updated.balance,
+        reason: `${type} ${qty} ${symbol} @ ${px}${orderType ? ` (${orderType})` : ''}`,
+        ts: BigInt(Date.now()),
+      },
+    })
 
-// Get user portfolio
-router.get('/portfolio', authenticateToken, async (req, res) => {
-  try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
-    const user = await User.findById(req.user._id).select('portfolio balance')
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' })
+    const io = req.app.get('io')
+    if (io) {
+      io.to('market').emit('trade:executed', toTradeDto(trade))
+      io.to(`user-${req.user.id}`).emit('balance:update', {
+        balance: updated.balance,
+        portfolio: updated.portfolio,
+      })
     }
 
     res.json({
-      portfolio: user.portfolio || {},
-      balance: user.balance
+      success: true,
+      trade: toTradeDto(trade),
+      balance: updated.balance,
+      portfolio: updated.portfolio,
     })
-  } catch (error) {
-    console.error('Portfolio fetch error:', error)
-    res.status(500).json({ error: 'Server error' })
+  } catch (e) {
+    next(e)
   }
 })
 
-// Get user watchlist
-router.get('/watchlist', authenticateToken, async (req, res) => {
+router.get('/portfolio', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
-    const user = await User.findById(req.user._id).select('watchlist')
-    res.json(user?.watchlist || [])
-  } catch (error) {
-    console.error('Watchlist fetch error:', error)
-    res.status(500).json({ error: 'Server error' })
+    res.json({ portfolio: req.user.portfolio || {}, balance: req.user.balance })
+  } catch (e) {
+    next(e)
   }
 })
 
-// Add to watchlist
-router.post('/watchlist', authenticateToken, async (req, res) => {
+router.get('/watchlist', authenticateToken, requireUser, async (req, res) => {
+  res.json(asArray(req.user.watchlist))
+})
+
+router.post('/watchlist', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
     const { asset } = req.body
-    const user = await User.findById(req.user._id)
-
-    if (!user.watchlist) user.watchlist = []
-
-    const exists = user.watchlist.find(item => item.asset === asset)
-    if (exists) {
-      return res.status(400).json({ error: 'Asset already in watchlist' })
+    if (!asset) return res.status(400).json({ success: false, error: 'asset required' })
+    const list = asArray(req.user.watchlist)
+    if (list.some((i) => i.asset === asset)) {
+      return res.status(400).json({ success: false, error: 'Asset already in watchlist' })
     }
-
-    user.watchlist.push({ asset, addedAt: new Date() })
-    await user.save()
-
+    list.push({ asset, addedAt: new Date().toISOString() })
+    await prisma.user.update({ where: { id: req.user.id }, data: { watchlist: list } })
     res.json({ success: true })
-  } catch (error) {
-    console.error('Add to watchlist error:', error)
-    res.status(500).json({ error: 'Server error' })
+  } catch (e) {
+    next(e)
   }
 })
 
-// Remove from watchlist
-router.delete('/watchlist/:asset', authenticateToken, async (req, res) => {
+router.delete('/watchlist/:asset', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
-    const { asset } = req.params
-    const user = await User.findById(req.user._id)
-
-    if (!user.watchlist) user.watchlist = []
-
-    user.watchlist = user.watchlist.filter(item => item.asset !== asset)
-    await user.save()
-
+    const list = asArray(req.user.watchlist).filter((i) => i.asset !== req.params.asset)
+    await prisma.user.update({ where: { id: req.user.id }, data: { watchlist: list } })
     res.json({ success: true })
-  } catch (error) {
-    console.error('Remove from watchlist error:', error)
-    res.status(500).json({ error: 'Server error' })
+  } catch (e) {
+    next(e)
   }
 })
 
-// Get price alerts
-router.get('/alerts', authenticateToken, async (req, res) => {
-  try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
-    const user = await User.findById(req.user._id).select('priceAlerts')
-    res.json(user?.priceAlerts || [])
-  } catch (error) {
-    console.error('Price alerts fetch error:', error)
-    res.status(500).json({ error: 'Server error' })
-  }
+router.get('/alerts', authenticateToken, requireUser, async (req, res) => {
+  res.json(asArray(req.user.priceAlerts))
 })
 
-// Create price alert
-router.post('/alerts', authenticateToken, async (req, res) => {
+router.post('/alerts', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
     const { asset, price, type } = req.body
-    const user = await User.findById(req.user._id)
-
-    if (!user.priceAlerts) user.priceAlerts = []
-
+    if (!asset || price == null || !['above', 'below'].includes(type)) {
+      return res.status(400).json({ success: false, error: 'asset / price / type required' })
+    }
+    const list = asArray(req.user.priceAlerts)
     const alert = {
       id: Date.now().toString(),
       asset,
-      price,
+      price: +price,
       type,
       status: 'active',
-      createdAt: new Date()
+      createdAt: new Date().toISOString(),
     }
-
-    user.priceAlerts.push(alert)
-    await user.save()
-
+    list.push(alert)
+    await prisma.user.update({ where: { id: req.user.id }, data: { priceAlerts: list } })
     res.json({ success: true, alert })
-  } catch (error) {
-    console.error('Create alert error:', error)
-    res.status(500).json({ error: 'Server error' })
+  } catch (e) {
+    next(e)
   }
 })
 
-// Delete price alert
-router.delete('/alerts/:alertId', authenticateToken, async (req, res) => {
+router.delete('/alerts/:alertId', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
-    const { alertId } = req.params
-    const user = await User.findById(req.user._id)
-
-    if (!user.priceAlerts) user.priceAlerts = []
-
-    user.priceAlerts = user.priceAlerts.filter(alert => alert.id !== alertId)
-    await user.save()
-
+    const list = asArray(req.user.priceAlerts).filter((a) => a.id !== req.params.alertId)
+    await prisma.user.update({ where: { id: req.user.id }, data: { priceAlerts: list } })
     res.json({ success: true })
-  } catch (error) {
-    console.error('Delete alert error:', error)
-    res.status(500).json({ error: 'Server error' })
+  } catch (e) {
+    next(e)
   }
 })
 
-// Get order history
-router.get('/orders/history', authenticateToken, async (req, res) => {
+router.get('/orders', authenticateToken, requireUser, (req, res) => {
+  res.json(asArray(req.user.orders).filter((o) => o.status === 'pending'))
+})
+
+router.delete('/orders/:orderId', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
+    const list = asArray(req.user.orders).filter((o) => o.id !== req.params.orderId)
+    await prisma.user.update({ where: { id: req.user.id }, data: { orders: list } })
+    res.json({ success: true })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/orders/history', authenticateToken, requireUser, async (req, res, next) => {
+  try {
     const { status, days } = req.query
-    const user = await User.findById(req.user._id).select('orders')
-
-    let orders = user?.orders || []
-
-    if (status && status !== 'all') {
-      orders = orders.filter(order => order.status === status)
-    }
-
+    let orders = asArray(req.user.orders)
+    if (status && status !== 'all') orders = orders.filter((o) => o.status === status)
     if (days) {
-      const daysAgo = new Date(Date.now() - (parseInt(days) * 24 * 60 * 60 * 1000))
-      orders = orders.filter(order => new Date(order.timestamp) >= daysAgo)
+      const since = Date.now() - parseInt(days) * 24 * 60 * 60 * 1000
+      orders = orders.filter((o) => new Date(o.timestamp).getTime() >= since)
     }
-
     res.json(orders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)))
-  } catch (error) {
-    console.error('Order history fetch error:', error)
-    res.status(500).json({ error: 'Server error' })
+  } catch (e) {
+    next(e)
   }
 })
 
-// Get trade history
-router.get('/trades/history', authenticateToken, async (req, res) => {
+router.get('/trades/history', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    if (req.userRole !== 'user') {
-      return res.status(403).json({ error: 'User access required' })
-    }
     const { type, days } = req.query
-    const user = await User.findById(req.user._id).select('trades')
-
-    let trades = user?.trades || []
-
-    if (type && type !== 'all') {
-      trades = trades.filter(trade => trade.type === type)
-    }
-
+    const where = { userId: req.user.id, source: 'user' }
+    if (type && type !== 'all') where.side = type
     if (days) {
-      const daysAgo = new Date(Date.now() - (parseInt(days) * 24 * 60 * 60 * 1000))
-      trades = trades.filter(trade => new Date(trade.timestamp) >= daysAgo)
+      where.time = { gte: BigInt(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000) }
+    }
+    const trades = await prisma.trade.findMany({ where, orderBy: { time: 'desc' }, take: 500 })
+    res.json(trades.map(toTradeDto))
+  } catch (e) {
+    next(e)
+  }
+})
+
+// --- User trading bots ---
+
+router.get('/trading-bots', authenticateToken, requireUser, (req, res) => {
+  res.json(asArray(req.user.tradingBots))
+})
+
+router.post('/trading-bots', authenticateToken, requireUser, async (req, res, next) => {
+  try {
+    const { name, strategy, asset, investment, ...config } = req.body
+    const inv = +investment
+    if (!(inv > 0) || inv > req.user.balance) {
+      return res.status(400).json({ success: false, error: 'Insufficient balance' })
     }
 
-    res.json(trades.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)))
-  } catch (error) {
-    console.error('Trade history fetch error:', error)
-    res.status(500).json({ error: 'Server error' })
+    const bot = {
+      id: Date.now().toString(),
+      name,
+      strategy,
+      asset,
+      investment: inv,
+      config,
+      status: 'active',
+      profit: 0,
+      trades: 0,
+      performance: 0,
+      createdAt: new Date().toISOString(),
+    }
+
+    const list = asArray(req.user.tradingBots)
+    list.push(bot)
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { balance: { decrement: inv }, tradingBots: list },
+    })
+    res.json({ success: true, bot })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.patch('/trading-bots/:botId/:action', authenticateToken, requireUser, async (req, res, next) => {
+  try {
+    const { botId, action } = req.params
+    const list = asArray(req.user.tradingBots)
+    const bot = list.find((b) => b.id === botId)
+    if (!bot) return res.status(404).json({ success: false, error: 'Bot not found' })
+    if (action === 'start') bot.status = 'active'
+    else if (action === 'pause') bot.status = 'paused'
+    else return res.status(400).json({ success: false, error: 'Invalid action' })
+    await prisma.user.update({ where: { id: req.user.id }, data: { tradingBots: list } })
+    res.json({ success: true })
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.delete('/trading-bots/:botId', authenticateToken, requireUser, async (req, res, next) => {
+  try {
+    const list = asArray(req.user.tradingBots)
+    const idx = list.findIndex((b) => b.id === req.params.botId)
+    if (idx === -1) return res.status(404).json({ success: false, error: 'Bot not found' })
+    const bot = list[idx]
+    list.splice(idx, 1)
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        balance: { increment: (bot.investment || 0) + (bot.profit || 0) },
+        tradingBots: list,
+      },
+    })
+    res.json({ success: true })
+  } catch (e) {
+    next(e)
   }
 })
 

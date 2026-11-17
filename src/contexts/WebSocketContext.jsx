@@ -1,7 +1,7 @@
-
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { io } from 'socket.io-client'
 import { useAuth } from './AuthContext'
+import { API_BASE, WS_BASE } from '../utils/api'
 
 const WebSocketContext = createContext()
 
@@ -21,78 +21,95 @@ export const WebSocketProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([])
 
   useEffect(() => {
-    // Initialize socket connection
-    const newSocket = io(process.env.REACT_APP_SERVER_URL || 'http://localhost:5000')
-    
+    const newSocket = io(WS_BASE, {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+      timeout: 8000,
+    })
+
     newSocket.on('connect', () => {
-      console.log('Connected to WebSocket server')
+      console.log('[ws] connected')
       setIsConnected(true)
-      
-      // Join user room for notifications
-      if (user) {
-        newSocket.emit('join-user-room', user.id)
-      }
+      newSocket.emit('join', 'market')
+      if (user) newSocket.emit('join-user-room', user.id)
     })
 
     newSocket.on('disconnect', () => {
-      console.log('Disconnected from WebSocket server')
+      console.log('[ws] disconnected')
       setIsConnected(false)
     })
 
-    // Handle price updates
-    newSocket.on('price-update', (data) => {
-      setMarketData(prev => ({
-        ...prev,
-        [data.symbol]: data
-      }))
+    newSocket.on('price:update', (payload) => {
+      setMarketData((prev) => {
+        const next = { ...prev }
+        for (const p of payload.prices || []) {
+          next[`${p.symbol}/USDT`] = { ...(prev[`${p.symbol}/USDT`] || {}), ...p, change: p.change24h }
+        }
+        return next
+      })
     })
 
-    // Handle notifications
+    newSocket.on('trade:executed', (trade) => {
+      setNotifications((prev) => [
+        {
+          id: `trade-${trade.time}-${Math.random()}`,
+          title: 'Trade executed',
+          message: `${trade.side} ${trade.size} ${trade.symbol} @ ${trade.price}`,
+        },
+        ...prev.slice(0, 19),
+      ])
+    })
+
     newSocket.on('notification', (notification) => {
-      setNotifications(prev => [notification, ...prev.slice(0, 19)]) // Keep last 20
-      
-      // Show browser notification if permission granted
+      setNotifications((prev) => [notification, ...prev.slice(0, 19)])
       if (Notification.permission === 'granted') {
-        new Notification(notification.title, {
-          body: notification.message,
-          icon: '/favicon.ico'
-        })
+        new Notification(notification.title, { body: notification.message })
       }
     })
 
     setSocket(newSocket)
 
+    // Render free tier sleeps: fall back to polling while the socket is down
+    const timer = setInterval(() => {
+      if (!newSocket.connected) {
+        fetch(`${API_BASE}/api/market/list`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            if (!d || !Array.isArray(d.data)) return
+            setMarketData((prev) => {
+              const next = { ...prev }
+              for (const p of d.data) {
+                next[`${p.symbol}/USDT`] = { ...(prev[`${p.symbol}/USDT`] || {}), ...p, change: p.change24h }
+              }
+              return next
+            })
+          })
+          .catch(() => {})
+      }
+    }, 4000)
+
     return () => {
+      clearInterval(timer)
       newSocket.close()
     }
   }, [user])
 
-  // Request notification permission
   useEffect(() => {
-    if (Notification.permission === 'default') {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission()
     }
   }, [])
 
   const joinMarketData = () => {
-    if (socket) {
-      socket.emit('join-market')
-    }
+    if (socket) socket.emit('join', 'market')
   }
 
   const leaveMarketData = () => {
-    if (socket) {
-      socket.emit('leave-market')
-    }
+    if (socket) socket.emit('leave', 'market')
   }
 
-  const clearNotifications = () => {
-    setNotifications([])
-  }
-
-  const removeNotification = (id) => {
-    setNotifications(prev => prev.filter(n => n.id !== id))
-  }
+  const clearNotifications = () => setNotifications([])
+  const removeNotification = (id) => setNotifications((prev) => prev.filter((n) => n.id !== id))
 
   const value = {
     socket,
@@ -102,12 +119,8 @@ export const WebSocketProvider = ({ children }) => {
     joinMarketData,
     leaveMarketData,
     clearNotifications,
-    removeNotification
+    removeNotification,
   }
 
-  return (
-    <WebSocketContext.Provider value={value}>
-      {children}
-    </WebSocketContext.Provider>
-  )
+  return <WebSocketContext.Provider value={value}>{children}</WebSocketContext.Provider>
 }

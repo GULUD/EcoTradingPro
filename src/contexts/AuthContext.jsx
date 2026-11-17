@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import axios from 'axios'
+import { API_BASE } from '../utils/api'
 
 const AuthContext = createContext()
 
@@ -15,10 +15,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-
   useEffect(() => {
-    // Check for stored auth token on mount
     const token = localStorage.getItem('token')
     if (token) {
       verifyToken(token)
@@ -29,11 +26,11 @@ export function AuthProvider({ children }) {
 
   const verifyToken = async (token) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/me`, {
+      const response = await fetch(`${API_BASE}/api/auth/me`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       })
 
       if (response.ok) {
@@ -53,24 +50,21 @@ export function AuthProvider({ children }) {
   const login = async (credentials, userType) => {
     try {
       const endpoint = userType === 'admin' ? 'admin/login' : 'user/login'
-
-      const response = await fetch(`${API_BASE_URL}/auth/${endpoint}`, {
+      const response = await fetch(`${API_BASE}/api/auth/${endpoint}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(credentials)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
       })
 
       const data = await response.json()
 
       if (response.ok && data.success) {
-        setUser(data.user)
         localStorage.setItem('token', data.token)
-        return { success: true }
-      } else {
-        return { success: false, error: data.error || 'Login failed' }
+        localStorage.setItem('userType', userType)
+        setUser(data.user)
+        return { success: true, requireChange: !!data.requireChange }
       }
+      return { success: false, error: data.error || 'Login failed' }
     } catch (error) {
       console.error('Login error:', error)
       return { success: false, error: 'Network error. Please try again.' }
@@ -79,23 +73,21 @@ export function AuthProvider({ children }) {
 
   const register = async (userData) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/user/register`, {
+      const response = await fetch(`${API_BASE}/api/auth/user/register`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(userData)
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData),
       })
 
       const data = await response.json()
 
       if (response.ok && data.success) {
-        setUser(data.user)
         localStorage.setItem('token', data.token)
+        localStorage.setItem('userType', 'user')
+        setUser(data.user)
         return { success: true }
-      } else {
-        return { success: false, error: data.error || 'Registration failed' }
       }
+      return { success: false, error: data.error || 'Registration failed' }
     } catch (error) {
       console.error('Registration error:', error)
       return { success: false, error: 'Network error. Please try again.' }
@@ -104,6 +96,7 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem('token')
+    localStorage.removeItem('userType')
     setUser(null)
     setLoading(false)
   }
@@ -118,12 +111,8 @@ export function AuthProvider({ children }) {
     register,
     logout,
     updateUser,
-    loading
+    loading,
   }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
