@@ -9,14 +9,14 @@ async function loadCoins() {
   return prisma.marketData.findMany({ where: { delisted: false }, orderBy: { symbol: 'asc' } })
 }
 
-// Legacy shape: { "BTC/USDT": { price, change, volume } }, still read by the dashboard
+// Legacy shape: { "BTC/GULU": { price, change, volume } }, still read by the dashboard
 router.get('/prices', async (req, res, next) => {
   try {
     const coins = await loadCoins()
     const out = {}
     for (const c of coins) {
       const price = displayPrice(c)
-      out[`${c.symbol}/USDT`] = {
+      out[`${c.symbol}/GULU`] = {
         symbol: c.symbol,
         name: c.name,
         price,

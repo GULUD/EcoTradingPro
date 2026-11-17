@@ -238,7 +238,7 @@ function OrderHistory() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <span className="font-medium">{item.asset}</span>
-                      <span className="text-gray-500 ml-1">/USDT</span>
+                      <span className="text-gray-500 ml-1">/GULU</span>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

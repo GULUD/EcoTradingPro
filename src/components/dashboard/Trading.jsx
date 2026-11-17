@@ -25,7 +25,7 @@ function Trading() {
   assetRef.current = selectedAsset
   typeRef.current = orderType
 
-  const pair = `${selectedAsset}/USDT`
+  const pair = `${selectedAsset}/GULU`
   const lastPrice = marketPrices[pair]?.price || 0
   const held = Number(user?.portfolio?.[selectedAsset] || 0)
 
@@ -44,7 +44,7 @@ function Trading() {
       const response = await axios.get('/api/market/prices')
       setMarketPrices(response.data)
       const symbol = assetRef.current
-      const px = response.data[`${symbol}/USDT`]?.price
+      const px = response.data[`${symbol}/GULU`]?.price
       if (px && typeRef.current === 'market') setPrice(String(px))
     } catch (error) {
       console.error('[trading] price fetch failed', error.message)
@@ -81,7 +81,7 @@ function Trading() {
     }
   }
 
-  // Buys are sized in quote (USDT), sells in base asset, matching the exchange convention
+  // Buys are sized in quote (GULU), sells in base asset, matching the exchange convention
   const referencePrice = () => {
     if (orderType === 'limit' && price) return parseFloat(price) || 0
     const bestAsk = orderBook.asks[0]?.price
@@ -113,7 +113,7 @@ function Trading() {
   const submitOrder = async () => {
     const value = parseFloat(amount)
     if (!value || value <= 0) {
-      setMessage(tradeType === 'buy' ? 'Enter the USDT amount to spend' : `Enter the ${selectedAsset} amount to sell`)
+      setMessage(tradeType === 'buy' ? 'Enter the GULU amount to spend' : `Enter the ${selectedAsset} amount to sell`)
       return
     }
     if (orderType === 'limit' && !(parseFloat(price) > 0)) {
@@ -233,7 +233,7 @@ function Trading() {
                 className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 {assets.map((asset) => (
-                  <option key={asset} value={asset}>{asset}/USDT</option>
+                  <option key={asset} value={asset}>{asset}/GULU</option>
                 ))}
               </select>
             </div>
@@ -255,7 +255,7 @@ function Trading() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Price (USDT)</label>
+              <label className="block text-sm font-medium mb-2">Price (GULU)</label>
               <input
                 type="number"
                 value={price}
@@ -270,7 +270,7 @@ function Trading() {
 
             <div>
               <label className="block text-sm font-medium mb-2">
-                {tradeType === 'buy' ? 'Amount (USDT)' : `Amount (${selectedAsset})`}
+                {tradeType === 'buy' ? 'Amount (GULU)' : `Amount (${selectedAsset})`}
               </label>
               <input
                 type="number"

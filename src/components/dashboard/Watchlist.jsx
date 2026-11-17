@@ -147,12 +147,12 @@ function Watchlist() {
         bVal = b.asset
         break
       case 'price':
-        aVal = marketPrices[`${a.asset}/USDT`]?.price || 0
-        bVal = marketPrices[`${b.asset}/USDT`]?.price || 0
+        aVal = marketPrices[`${a.asset}/GULU`]?.price || 0
+        bVal = marketPrices[`${b.asset}/GULU`]?.price || 0
         break
       case 'change':
-        aVal = marketPrices[`${a.asset}/USDT`]?.change || 0
-        bVal = marketPrices[`${b.asset}/USDT`]?.change || 0
+        aVal = marketPrices[`${a.asset}/GULU`]?.change || 0
+        bVal = marketPrices[`${b.asset}/GULU`]?.change || 0
         break
       default:
         aVal = a.asset
@@ -212,7 +212,7 @@ function Watchlist() {
                       onClick={() => addToWatchlist(asset)}
                       className="p-3 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition"
                     >
-                      {asset}/USDT
+                      {asset}/GULU
                     </button>
                   ))}
                 </div>
@@ -244,7 +244,7 @@ function Watchlist() {
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700"
                 >
                   {availableAssets.map(asset => (
-                    <option key={asset} value={asset}>{asset}/USDT</option>
+                    <option key={asset} value={asset}>{asset}/GULU</option>
                   ))}
                 </select>
               </div>
@@ -271,7 +271,7 @@ function Watchlist() {
                   placeholder="0.00"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Current: ${marketPrices[`${selectedAsset}/USDT`]?.price?.toLocaleString() || '0'}
+                  Current: ${marketPrices[`${selectedAsset}/GULU`]?.price?.toLocaleString() || '0'}
                 </p>
               </div>
             </div>
@@ -333,11 +333,11 @@ function Watchlist() {
               </thead>
               <tbody>
                 {sortedWatchlist.map(item => {
-                  const priceData = marketPrices[`${item.asset}/USDT`]
+                  const priceData = marketPrices[`${item.asset}/GULU`]
                   return (
                     <tr key={item.asset} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800">
                       <td className="py-3">
-                        <div className="font-semibold">{item.asset}/USDT</div>
+                        <div className="font-semibold">{item.asset}/GULU</div>
                       </td>
                       <td className="text-right py-3">
                         <div className="font-semibold">
@@ -382,12 +382,12 @@ function Watchlist() {
             {priceAlerts.map(alert => (
               <div key={alert.id} className="flex justify-between items-center p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
                 <div>
-                  <div className="font-semibold">{alert.asset}/USDT</div>
+                  <div className="font-semibold">{alert.asset}/GULU</div>
                   <div className="text-sm text-gray-500">
                     Alert when price goes {alert.type} ${alert.price?.toLocaleString()}
                   </div>
                   <div className="text-xs text-gray-400">
-                    Current: ${marketPrices[`${alert.asset}/USDT`]?.price?.toLocaleString() || '0'}
+                    Current: ${marketPrices[`${alert.asset}/GULU`]?.price?.toLocaleString() || '0'}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

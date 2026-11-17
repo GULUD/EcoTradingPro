@@ -84,7 +84,10 @@ async function seedContent() {
 async function seedAll() {
   await seedMarketData()
   await seedContent()
-  console.log('[seed] market and content ready')
+  // Required lazily: p2pBot depends on the order routes, which must load after db
+  const { seedBots } = require('../services/p2pBot')
+  await seedBots()
+  console.log('[seed] market, content and p2p ready')
 }
 
 module.exports = { seedAll, seedMarketData, seedContent, COINS }

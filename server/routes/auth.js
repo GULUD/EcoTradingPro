@@ -59,7 +59,8 @@ router.post('/user/register', authLimiter, async (req, res, next) => {
         password: await bcrypt.hash(password, 12),
         firstName,
         lastName,
-        balance: 10000,
+        // GULU is issued by the operator or bought P2P, never granted at signup
+        balance: 0,
         isActive: true,
       },
     })

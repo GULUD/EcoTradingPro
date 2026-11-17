@@ -187,7 +187,7 @@ function LandingPage() {
                     <div className="sm:col-span-2 bg-black/5 dark:bg-white/5 rounded-2xl p-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-gray-500">Order Book</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">BTC/USDT</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">BTC/GULU</span>
                       </div>
                       <div className="mt-2 space-y-1 text-sm">
                         <div className="flex justify-between">
@@ -207,7 +207,7 @@ function LandingPage() {
 
                     <div className="sm:col-span-3 bg-white dark:bg-[#0B1324] rounded-2xl p-3 border border-black/5 dark:border-white/5">
                       <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs font-semibold">BTC/USDT</div>
+                        <div className="text-xs font-semibold">BTC/GULU</div>
                         <div className="text-xs text-gray-500">1h</div>
                       </div>
                       <canvas ref={heroChartRef} height="160"></canvas>
@@ -390,7 +390,7 @@ function LandingPage() {
           <div className="mt-8 space-y-4">
             <details className="group rounded-xl border border-black/5 dark:border-white/5 p-4">
               <summary className="cursor-pointer font-semibold">Which markets are supported?</summary>
-              <p className="mt-2 text-gray-600 dark:text-gray-300">Spot markets for BTC, ETH, SOL, XRP, BNB, ADA, DOT, LINK, MATIC and UNI, all quoted against USDT, with new listings added continuously.</p>
+              <p className="mt-2 text-gray-600 dark:text-gray-300">Spot markets for BTC, ETH, SOL, XRP, BNB, ADA, DOT, LINK, MATIC and UNI, all quoted against GULU, with new listings added continuously.</p>
             </details>
             <details className="group rounded-xl border border-black/5 dark:border-white/5 p-4">
               <summary className="cursor-pointer font-semibold">Which order types can I place?</summary>

@@ -17,6 +17,7 @@ import TradingCompetitions from './TradingCompetitions'
 import APIAccess from './APIAccess'
 import RiskManagement from './RiskManagement'
 import PerformanceAnalytics from './PerformanceAnalytics'
+import P2P from './P2P'
 
 function UserDashboard() {
   const { user, logout } = useAuth()
@@ -209,6 +210,10 @@ function UserDashboard() {
               <i className="fas fa-exchange-alt text-lg"></i>
               {!sidebarCollapsed && <span>Trade</span>}
             </Link>
+            <Link to="/dashboard/p2p" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
+              <i className="fas fa-handshake text-lg"></i>
+              {!sidebarCollapsed && <span>P2P / Deposit</span>}
+            </Link>
             <Link to="/dashboard/analytics" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
               <i className="fas fa-chart-bar text-lg"></i>
               {!sidebarCollapsed && <span>Analytics</span>}
@@ -331,6 +336,7 @@ function UserDashboard() {
               />
               <Route path="/portfolio" element={<Portfolio />} />
               <Route path="/trading" element={<Trading />} />
+              <Route path="/p2p" element={<P2P />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/news" element={<div>News Management System coming soon...</div>} />

@@ -283,15 +283,15 @@ const PerformanceAnalytics = () => {
               <h4 className="font-semibold text-green-700 dark:text-green-400 mb-2">Best Performing Assets</h4>
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span>SOL/USDT</span>
+                  <span>SOL/GULU</span>
                   <span className="font-semibold">+24.8%</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>ETH/USDT</span>
+                  <span>ETH/GULU</span>
                   <span className="font-semibold">+18.3%</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>BTC/USDT</span>
+                  <span>BTC/GULU</span>
                   <span className="font-semibold">+12.1%</span>
                 </div>
               </div>

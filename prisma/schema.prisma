@@ -36,7 +36,10 @@ model User {
   lastName           String
   email              String   @unique
   password           String
-  balance            Float    @default(10000)
+  // GULU only enters circulation through admin issuance or P2P purchase
+  balance            Float    @default(0)
+  // GULU held in escrow for open P2P orders; kept apart from spendable balance
+  locked             Float    @default(0)
   isActive           Boolean  @default(true)
   mustChangePassword Boolean  @default(false)
   portfolio          Json     @default("{}")
@@ -53,8 +56,123 @@ model User {
   trades       Trade[]
   transactions Transaction[]
   orders       Order[]
+  merchant     Merchant?
+  p2pBuys      P2POrder[] @relation("P2PBuyer")
+  p2pSells     P2POrder[] @relation("P2PSeller")
+  guluIssues   GuluIssue[]
 
   @@index([isActive])
+}
+
+enum MerchantStatus {
+  pending
+  approved
+  rejected
+  suspended
+}
+
+enum GuluOpType {
+  mint
+  burn
+}
+
+// Every supply change is recorded here; total supply is sum(mint) - sum(burn)
+model GuluIssue {
+  id       String     @id @default(cuid())
+  type     GuluOpType
+  amount   Float
+  userId   String?
+  operator String
+  note     String?
+  ts       BigInt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([ts])
+}
+
+enum P2PSide {
+  buy
+  sell
+}
+
+enum P2POrderStatus {
+  pending_payment
+  paid
+  completed
+  cancelled
+  disputed
+}
+
+// Merchant is a user allowed to publish P2P ads; bots are merchants with auto release
+model Merchant {
+  id              String         @id @default(cuid())
+  userId          String         @unique
+  businessName    String
+  contact         String?
+  status          MerchantStatus @default(pending)
+  isBot           Boolean        @default(false)
+  note            String?
+  maxOrderGulu    Float          @default(1000)
+  dailyLimitGulu  Float          @default(5000)
+  completedOrders Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  user User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ads  P2PAd[]
+
+  @@index([status])
+}
+
+model P2PAd {
+  id             String   @id @default(cuid())
+  merchantId     String
+  // side is the merchant's side: sell means the merchant sells GULU to users
+  side           P2PSide
+  price          Float
+  fiat           String   @default("CNY")
+  minAmount      Float    @default(10)
+  maxAmount      Float    @default(10000)
+  available      Float    @default(0)
+  paymentMethods Json     @default("[]")
+  terms          String?
+  status         String   @default("active")
+  autoRelease    Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  merchant Merchant   @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  orders   P2POrder[]
+
+  @@index([status, side])
+  @@index([merchantId])
+}
+
+model P2POrder {
+  id            String         @id @default(cuid())
+  adId          String
+  buyerId       String
+  sellerId      String
+  amount        Float
+  price         Float
+  fiatAmount    Float
+  fiat          String         @default("CNY")
+  status        P2POrderStatus @default(pending_payment)
+  paymentMethod String?
+  paymentRef    String?
+  cancelReason  String?
+  createdAt     DateTime       @default(now())
+  paidAt        DateTime?
+  completedAt   DateTime?
+
+  ad     P2PAd @relation(fields: [adId], references: [id], onDelete: Cascade)
+  buyer  User  @relation("P2PBuyer", fields: [buyerId], references: [id], onDelete: Cascade)
+  seller User  @relation("P2PSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@index([buyerId, createdAt])
+  @@index([sellerId, createdAt])
+  @@index([status, paidAt])
 }
 
 model Admin {

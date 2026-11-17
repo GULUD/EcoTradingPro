@@ -34,6 +34,7 @@ router.get('/profile', authenticateToken, requireUser, async (req, res, next) =>
       lastName: u.lastName,
       email: u.email,
       balance: u.balance,
+      locked: u.locked,
       portfolio: u.portfolio,
       watchlist: u.watchlist,
       priceAlerts: u.priceAlerts,

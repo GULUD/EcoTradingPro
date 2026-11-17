@@ -104,7 +104,7 @@ function APIAccess() {
             path: '/api/v1/market/prices',
             description: 'Get current market prices',
             params: { symbols: 'BTC,ETH,SOL (optional)' },
-            response: { 'BTC/USDT': { price: 68500, change: 2.1 } }
+            response: { 'BTC/GULU': { price: 68500, change: 2.1 } }
           },
           {
             method: 'GET',

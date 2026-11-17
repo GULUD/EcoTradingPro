@@ -44,7 +44,7 @@ export const WebSocketProvider = ({ children }) => {
       setMarketData((prev) => {
         const next = { ...prev }
         for (const p of payload.prices || []) {
-          next[`${p.symbol}/USDT`] = { ...(prev[`${p.symbol}/USDT`] || {}), ...p, change: p.change24h }
+          next[`${p.symbol}/GULU`] = { ...(prev[`${p.symbol}/GULU`] || {}), ...p, change: p.change24h }
         }
         return next
       })
@@ -80,7 +80,7 @@ export const WebSocketProvider = ({ children }) => {
             setMarketData((prev) => {
               const next = { ...prev }
               for (const p of d.data) {
-                next[`${p.symbol}/USDT`] = { ...(prev[`${p.symbol}/USDT`] || {}), ...p, change: p.change24h }
+                next[`${p.symbol}/GULU`] = { ...(prev[`${p.symbol}/GULU`] || {}), ...p, change: p.change24h }
               }
               return next
             })

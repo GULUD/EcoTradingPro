@@ -24,6 +24,7 @@ const jwt = require('jsonwebtoken')
 const prisma = require('./db')
 const { tickPrices } = require('./services/priceEngine')
 const { tick: tickBook } = require('./services/marketMaker')
+const { autoReleaseTick } = require('./services/p2pBot')
 const { router: authRouter } = require('./routes/auth')
 
 const app = express()
@@ -66,8 +67,10 @@ app.use(express.urlencoded({ extended: true }))
 app.use('/api/auth', authRouter)
 app.use('/api/admin', require('./routes/admin-coins'))
 app.use('/api/admin', require('./routes/admin-bots'))
+app.use('/api/admin', require('./routes/admin-p2p'))
 app.use('/api/admin', require('./routes/admin'))
 app.use('/api/users', require('./routes/users'))
+app.use('/api/p2p', require('./routes/p2p'))
 app.use('/api/market', require('./routes/market'))
 app.use('/api/news', require('./routes/news'))
 app.use('/api/announcements', require('./routes/announcements'))
@@ -136,10 +139,16 @@ const bookTimer = setInterval(() => {
 
 tickBook(io).catch((e) => console.error('[book] initial tick failed:', e.message))
 
+// Bot merchants release escrow a few seconds after a buyer marks the order paid
+const p2pTimer = setInterval(() => {
+  autoReleaseTick(io).catch((e) => console.error('[p2p] tick failed:', e.message))
+}, 5000)
+
 process.on('SIGTERM', () => {
   console.log('[boot] SIGTERM received, shutting down')
   clearInterval(priceTimer)
   clearInterval(bookTimer)
+  clearInterval(p2pTimer)
   server.close(() => {
     prisma.$disconnect().finally(() => process.exit(0))
   })

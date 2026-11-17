@@ -305,7 +305,7 @@ function AdvancedCharts() {
               className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
             >
               {assets.map(asset => (
-                <option key={asset} value={asset}>{asset}/USDT</option>
+                <option key={asset} value={asset}>{asset}/GULU</option>
               ))}
             </select>
 

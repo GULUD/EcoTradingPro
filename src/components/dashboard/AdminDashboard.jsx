@@ -19,7 +19,9 @@ import {
   TrendingUp,
   Zap,
   Megaphone,
+  ArrowLeftRight,
 } from 'lucide-react'
+import AdminP2P from './AdminP2P'
 
 // Placeholder for AdminDashboardHome and UserManagement components if they were defined elsewhere
 const AdminDashboardHome = () => <div>Dashboard Content</div>;
@@ -216,6 +218,17 @@ function AdminDashboard() {
             >
               <TrendingUp className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">Price Chart</span>}
+            </button>
+            <button
+              onClick={() => setActiveTab('p2p')}
+              className={`w-full flex items-center px-4 py-3 rounded-xl transition-all duration-300 ${
+                activeTab === 'p2p'
+                  ? 'bg-primary/20 text-primary border border-primary/30'
+                  : 'hover:bg-gray-800/50 text-gray-300 hover:text-white'
+              }`}
+            >
+              <ArrowLeftRight className="w-5 h-5 mr-4" />
+              {!sidebarCollapsed && <span className="font-medium">P2P / GULU</span>}
             </button>
             <button className="w-full flex items-center px-4 py-3 rounded-xl hover:bg-gray-800/50 text-gray-300 hover:text-white transition-all duration-300">
               <Bell className="w-5 h-5 mr-4" />
@@ -494,6 +507,7 @@ function AdminDashboard() {
           )}
 
           {activeTab === 'coins' && <CoinManagement />}
+          {activeTab === 'p2p' && <AdminP2P />}
           {activeTab === 'bots' && <BotFormation />}
           {activeTab === 'price' && <PriceChart />}
         </main>

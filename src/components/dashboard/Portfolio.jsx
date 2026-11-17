@@ -74,7 +74,7 @@ function Portfolio() {
 
   const calculatePortfolioValue = () => {
     return Object.entries(portfolio).reduce((total, [asset, quantity]) => {
-      const price = marketPrices[`${asset}/USDT`]?.price || 0
+      const price = marketPrices[`${asset}/GULU`]?.price || 0
       return total + (quantity * price)
     }, 0)
   }
@@ -103,7 +103,7 @@ function Portfolio() {
     if (totalValue === 0) return []
     
     return Object.entries(portfolio).map(([asset, quantity]) => {
-      const price = marketPrices[`${asset}/USDT`]?.price || 0
+      const price = marketPrices[`${asset}/GULU`]?.price || 0
       const value = quantity * price
       const percentage = (value / totalValue) * 100
       return {
