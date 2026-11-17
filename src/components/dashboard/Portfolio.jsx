@@ -81,7 +81,8 @@ function Portfolio() {
     const totalValue = calculatePortfolioValue()
     if (totalValue === 0) return []
     
-    return Object.entries(portfolio).map(([asset, quantity]) => {
+    return Object.entries(portfolio).map(([asset, rawQuantity]) => {
+      const quantity = Number(rawQuantity) || 0
       const price = marketPrices[`${asset}/GULU`]?.price || 0
       const value = quantity * price
       const percentage = (value / totalValue) * 100

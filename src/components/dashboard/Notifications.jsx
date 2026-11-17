@@ -10,14 +10,22 @@ function Notifications() {
 
   useEffect(() => {
     let cancelled = false
-    axios
-      .get('/api/announcements')
-      .then((response) => {
-        if (!cancelled) setAnnouncements(Array.isArray(response.data) ? response.data : [])
-      })
-      .catch((error) => console.error('[announcements] fetch failed', error.message))
+
+    const loadAnnouncements = () => {
+      axios
+        .get('/api/announcements')
+        .then((response) => {
+          if (!cancelled) setAnnouncements(Array.isArray(response.data) ? response.data : [])
+        })
+        .catch((error) => console.error('[announcements] fetch failed', error.message))
+    }
+
+    loadAnnouncements()
+    // Operators publish or hide announcements while users are signed in
+    const timer = setInterval(loadAnnouncements, 60000)
     return () => {
       cancelled = true
+      clearInterval(timer)
     }
   }, [])
 
@@ -139,6 +147,7 @@ function Notifications() {
                     </div>
                     <button
                       onClick={() => removeNotification(notification.id)}
+                      aria-label="Dismiss notification"
                       className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 ml-2"
                     >
                       ×

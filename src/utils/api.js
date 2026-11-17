@@ -11,3 +11,5 @@ export const WS_BASE = import.meta.env.VITE_WS_BASE || API_BASE
 
 // Components import the axios package directly, so the default must be global
 axios.defaults.baseURL = API_BASE
+// Without a deadline a stalled API leaves direct axios callers on a spinner forever
+axios.defaults.timeout = 15000

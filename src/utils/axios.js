@@ -17,7 +17,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // A wrong current password on the change-password form is a 401 too, but it
+    // must show the error instead of signing the user out mid-form
+    const url = error.config?.url || ''
+    const authAttempt = url.includes('/api/auth/change-password') || url.includes('/api/auth/login')
+    if (error.response?.status === 401 && !authAttempt) {
       localStorage.removeItem('token')
       localStorage.removeItem('userType')
       window.location.href = '/'

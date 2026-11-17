@@ -154,7 +154,7 @@ function UserRegister() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || Boolean(success)}
               className="w-full px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed transition font-semibold"
             >
               {loading ? 'Creating Account...' : 'Create Account'}

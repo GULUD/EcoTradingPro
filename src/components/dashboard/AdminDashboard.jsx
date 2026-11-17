@@ -43,6 +43,7 @@ function AdminDashboard() {
   const [balanceError, setBalanceError] = useState('')
   const [confirmingBalance, setConfirmingBalance] = useState(false)
   const [savingBalance, setSavingBalance] = useState(false)
+  const [statusBusyId, setStatusBusyId] = useState('')
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -114,6 +115,24 @@ function AdminDashboard() {
 
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed)
+  }
+
+  const toggleUserStatus = async (targetUser) => {
+    if (statusBusyId) return
+    const nextActive = !targetUser.isActive
+    const verb = nextActive ? 'reactivate' : 'suspend'
+    if (!window.confirm(`Are you sure you want to ${verb} ${targetUser.email}?`)) return
+    setStatusBusyId(targetUser.id)
+    try {
+      const response = await axios.put(`/api/admin/users/${targetUser.id}/status`, { isActive: nextActive })
+      setUsers((prev) => prev.map((item) => (item.id === targetUser.id ? response.data : item)))
+      fetchStats()
+    } catch (error) {
+      console.error('[admin] status update failed', error.message)
+      window.alert(error.response?.data?.error || 'Failed to update the account status')
+    } finally {
+      setStatusBusyId('')
+    }
   }
 
   const handleLogout = () => {
@@ -472,12 +491,23 @@ function AdminDashboard() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-400">
                           {new Date(user.createdAt).toLocaleDateString()}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-4">
                           <button
                             onClick={() => openBalanceEditor(user)}
                             className="text-primary hover:text-purple-400 transition-colors"
                           >
                             Edit Balance
+                          </button>
+                          <button
+                            onClick={() => toggleUserStatus(user)}
+                            disabled={statusBusyId === user.id}
+                            className={`transition-colors disabled:opacity-50 ${
+                              user.isActive
+                                ? 'text-amber-400 hover:text-amber-300'
+                                : 'text-emerald-400 hover:text-emerald-300'
+                            }`}
+                          >
+                            {user.isActive ? 'Suspend' : 'Activate'}
                           </button>
                         </td>
                       </tr>
