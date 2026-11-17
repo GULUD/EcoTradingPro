@@ -85,6 +85,10 @@ export function CoinManagement() {
     }, `${symbol} restored`)
 
   const batch = async () => {
+    if (String(deltaPct).trim() === '') {
+      setMsg('Enter a percentage to apply')
+      return
+    }
     const pct = Number(deltaPct)
     if (!Number.isFinite(pct)) {
       setMsg('Enter a percentage to apply')
@@ -106,7 +110,11 @@ export function CoinManagement() {
     <div className="space-y-6">
       <div className={card}>
         <h2 className="text-xl font-bold mb-4">Coin Management</h2>
-        {msg && <p className="text-sm text-emerald-400 mb-3">{msg}</p>}
+        {msg && (
+          <p className={`text-sm mb-3 ${/^(Failed|Enter|No |Request failed)/.test(msg) ? 'text-red-400' : 'text-emerald-400'}`}>
+            {msg}
+          </p>
+        )}
         <form onSubmit={create} className="grid grid-cols-2 lg:grid-cols-6 gap-3">
           <input className={input} placeholder="Symbol" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} required />
           <input className={input} placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -217,7 +225,7 @@ export function BotFormation() {
       const list = res.data.coins || []
       setCoins(list)
       if (list[0]) setForm((f) => ({ ...f, symbol: f.symbol || list[0].symbol }))
-    })
+    }).catch((err) => setMsg(err.response?.data?.message || 'Failed to load coins'))
     loadStatus().catch(() => {})
     const timer = setInterval(() => loadStatus().catch(() => {}), 3000)
     return () => clearInterval(timer)
@@ -278,7 +286,11 @@ export function BotFormation() {
           <h2 className="text-xl font-bold">Bot Formation</h2>
           <button className={dangerBtn} onClick={stopAll}>Stop All</button>
         </div>
-        {msg && <p className="text-sm text-emerald-400 mb-3">{msg}</p>}
+        {msg && (
+          <p className={`text-sm mb-3 ${/^(Failed|Enter|No |Request failed)/.test(msg) ? 'text-red-400' : 'text-emerald-400'}`}>
+            {msg}
+          </p>
+        )}
         <form onSubmit={start} className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <select className={input} value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })}>
             {coins.map((c) => <option key={c.symbol} value={c.symbol}>{c.symbol}</option>)}
@@ -364,7 +376,7 @@ export function PriceChart() {
       const list = res.data.coins || []
       setCoins(list)
       if (list[0]) setSymbol(list[0].symbol)
-    })
+    }).catch((err) => console.error('[admin] chart coin fetch failed', err.message))
   }, [])
 
   useEffect(() => {

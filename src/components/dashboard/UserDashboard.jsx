@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, lazy, Suspense } from 'react'
-import { Link, useNavigate, Routes, Route } from 'react-router-dom'
+import { Link, useNavigate, useLocation, Routes, Route } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useWebSocket } from '../../contexts/WebSocketContext'
@@ -37,6 +37,7 @@ function UserDashboard() {
   const { theme, toggleTheme } = useTheme()
   const { notifications } = useWebSocket()
   const navigate = useNavigate()
+  const location = useLocation()
   const chartRef = useRef(null)
 
   const [activeTab, setActiveTab] = useState('buy')
@@ -65,6 +66,16 @@ function UserDashboard() {
 
   const unreadCount = notifications.length
 
+  // The sidebar used to paint Dashboard as active on every page; highlight follows the URL now
+  const navClass = (path) => {
+    const active = path === '/dashboard'
+      ? location.pathname === '/dashboard' || location.pathname === '/dashboard/'
+      : location.pathname.startsWith(path)
+    return active
+      ? 'flex items-center gap-4 px-4 py-3 rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400 border-l-4 border-brand-500 mb-2'
+      : 'flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2'
+  }
+
   return (
     <div className="bg-white text-gray-900 dark:bg-[#0A0F1A] dark:text-gray-100 min-h-screen">
       <div className="flex min-h-screen">
@@ -91,44 +102,44 @@ function UserDashboard() {
             </div>
           </div>
           <nav className="px-4" onClick={() => setMobileSidebarOpen(false)}>
-            <Link to="/dashboard" className="flex items-center gap-4 px-4 py-3 rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400 border-l-4 border-brand-500 mb-2">
+            <Link to="/dashboard" className={navClass('/dashboard')}>
               <i className="fas fa-home text-lg"></i>
               {!sidebarCollapsed && <span>Dashboard</span>}
             </Link>
-            <Link to="/dashboard/portfolio" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
+            <Link to="/dashboard/portfolio" className={navClass('/dashboard/portfolio')}>
               <i className="fas fa-wallet text-lg"></i>
               {!sidebarCollapsed && <span>Portfolio</span>}
             </Link>
-            <Link to="/dashboard/trading" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
+            <Link to="/dashboard/trading" className={navClass('/dashboard/trading')}>
               <i className="fas fa-exchange-alt text-lg"></i>
               {!sidebarCollapsed && <span>Trade</span>}
             </Link>
-            <Link to="/dashboard/p2p" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
+            <Link to="/dashboard/p2p" className={navClass('/dashboard/p2p')}>
               <i className="fas fa-handshake text-lg"></i>
               {!sidebarCollapsed && <span>P2P / Deposit</span>}
             </Link>
-            <Link to="/dashboard/analytics" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
+            <Link to="/dashboard/analytics" className={navClass('/dashboard/analytics')}>
               <i className="fas fa-chart-bar text-lg"></i>
               {!sidebarCollapsed && <span>Analytics</span>}
             </Link>
-            <Link to="/dashboard/advanced-charts" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
+            <Link to="/dashboard/advanced-charts" className={navClass('/dashboard/advanced-charts')}>
               <i className="fas fa-chart-line text-lg"></i>
               {!sidebarCollapsed && <span>Advanced Charts</span>}
             </Link>
-            <Link to="/dashboard/news" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
+            <Link to="/dashboard/news" className={navClass('/dashboard/news')}>
               <i className="fas fa-newspaper text-lg"></i>
               {!sidebarCollapsed && <span>News</span>}
             </Link>
-            <Link to="/dashboard/notifications" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
+            <Link to="/dashboard/notifications" className={navClass('/dashboard/notifications')}>
               <i className="fas fa-bell text-lg"></i>
               {!sidebarCollapsed && <span>Notifications</span>}
             </Link>
             {/* New Navigation Links */}
-            <Link to="/dashboard/order-history" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
+            <Link to="/dashboard/order-history" className={navClass('/dashboard/order-history')}>
               <i className="fas fa-list-alt text-lg"></i>
               {!sidebarCollapsed && <span>Order History</span>}
             </Link>
-            <Link to="/dashboard/watchlist" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
+            <Link to="/dashboard/watchlist" className={navClass('/dashboard/watchlist')}>
               <i className="fas fa-eye text-lg"></i>
               {!sidebarCollapsed && <span>Watchlist</span>}
             </Link>
@@ -143,12 +154,14 @@ function UserDashboard() {
               <div className="flex items-center gap-3 min-w-0">
                 <button
                   onClick={() => setMobileSidebarOpen(true)}
+                  aria-label="Open navigation"
                   className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 lg:hidden"
                 >
                   <i className="fas fa-bars"></i>
                 </button>
                 <button
                   onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                   className="hidden lg:block p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5"
                 >
                   <i className="fas fa-bars"></i>
@@ -158,6 +171,7 @@ function UserDashboard() {
               <div className="flex items-center gap-2 lg:gap-4">
                 <button
                   onClick={toggleTheme}
+                  aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
                   className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5"
                 >
                   <i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`}></i>
@@ -184,6 +198,7 @@ function UserDashboard() {
                   </div>
                   <button
                     onClick={handleLogout}
+                    aria-label="Sign out"
                     className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 text-red-500"
                   >
                     <i className="fas fa-sign-out-alt"></i>

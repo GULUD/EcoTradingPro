@@ -10,7 +10,6 @@ const MAX_DRIFT = 0.02
 const NEAR = 0.014
 
 const r = (n, d) => +Number(n).toFixed(d)
-const best = (rows, dir) => rows.reduce((m, o) => (m === 0 ? o.price : dir === 'max' ? Math.max(m, o.price) : Math.min(m, o.price)), 0)
 
 // House quotes carry no user funds and no trade history, so replacing them with
 // a delete keeps the order table from growing by thousands of dead rows a day.

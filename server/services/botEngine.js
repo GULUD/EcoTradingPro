@@ -30,7 +30,10 @@ async function step(bot, io) {
   }
 
   const up = gap > 0
-  const progress = Math.min(1, Math.abs(gap) / Math.abs(bot.startGap || gap))
+  // The first tick captures the real starting gap; computing it from the config
+  // alone always yielded zero and flattened the easing curve
+  if (bot.startGap == null) bot.startGap = gap
+  const progress = bot.startGap ? Math.min(1, Math.abs(gap) / Math.abs(bot.startGap)) : 1
   const ease = Math.max(0.15, progress)
 
   let intensity = bot.intensity * ease
@@ -110,7 +113,7 @@ function startGroup(io, cfg) {
       intervalMs: Math.max(500, Number(b.intervalMs) || 3000),
       speed: Math.max(0.1, Number(b.speed) || 1),
       avgSize: Number(b.avgSize) > 0 ? Number(b.avgSize) : 1,
-      startGap: (b.target - (b.startPrice || b.target)) / (b.startPrice || b.target),
+      startGap: Number(b.startPrice) > 0 ? (b.target - b.startPrice) / b.startPrice : null,
       stopped: false,
     }))
   bots.forEach((b) => {

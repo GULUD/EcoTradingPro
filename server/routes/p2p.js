@@ -338,10 +338,14 @@ router.post('/orders', authenticateToken, requireUser, async (req, res, next) =>
       const seller = await tx.user.findUnique({ where: { id: sellerId } })
       if (!seller || seller.balance < gulu) return fail(400, 'Seller has insufficient GULU')
 
-      await tx.user.update({
-        where: { id: sellerId },
+      // Conditional decrement so two simultaneous orders cannot overdraw the same balance
+      const moved = await tx.user.updateMany({
+        where: { id: sellerId, balance: { gte: gulu } },
         data: { balance: { decrement: gulu }, locked: { increment: gulu } },
       })
+      if (moved.count === 0) return fail(400, 'Seller has insufficient GULU')
+      const debited = await tx.user.findUnique({ where: { id: sellerId } })
+      const balanceBefore = +(debited.balance + gulu).toFixed(8)
 
       const nextAvailable = +(ad.available - gulu).toFixed(8)
       await tx.p2PAd.update({
@@ -358,8 +362,8 @@ router.post('/orders', authenticateToken, requireUser, async (req, res, next) =>
           userId: sellerId,
           type: 'p2p_escrow',
           amount: -gulu,
-          balanceBefore: seller.balance,
-          balanceAfter: seller.balance - gulu,
+          balanceBefore,
+          balanceAfter: debited.balance,
           reason: `p2p escrow ${gulu} GULU for order ${order.id}`,
           ts: BigInt(Date.now()),
         },

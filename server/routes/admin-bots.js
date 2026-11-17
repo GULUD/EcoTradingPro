@@ -29,8 +29,8 @@ router.post('/bot-groups', authenticateToken, requireAdmin, (req, res) => {
   const bots = Array.isArray(cfg.bots) ? cfg.bots.flatMap(expand) : expand(cfg)
   if (!bots.length) return res.status(400).json({ success: false, message: 'no bot config' })
   for (const b of bots) {
-    if (!b.symbol || b.target == null) {
-      return res.status(400).json({ success: false, message: 'each item needs symbol and target' })
+    if (!b.symbol || !Number.isFinite(b.target) || b.target <= 0) {
+      return res.status(400).json({ success: false, message: 'each item needs symbol and a positive target' })
     }
     if (!MODES.includes(b.mode)) {
       return res.status(400).json({ success: false, message: `invalid mode: ${b.mode}` })

@@ -164,12 +164,14 @@ class PortfolioService {
   }
 
   async loadReplay(userId) {
-    const trades = await prisma.trade.findMany({
+    // Replay the newest window, not the oldest: taking the first N ascending
+    // fills would freeze cost basis at the cutoff and zero out newer P&L
+    const recent = await prisma.trade.findMany({
       where: { userId, source: 'user' },
-      orderBy: [{ time: 'asc' }, { id: 'asc' }],
+      orderBy: [{ time: 'desc' }, { id: 'desc' }],
       take: MAX_REPLAY_TRADES,
     })
-    return replayTrades(trades)
+    return replayTrades(recent.reverse())
   }
 
   // Shared by /users/trades so the UI shows the same realized P&L as the reports

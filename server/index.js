@@ -53,8 +53,11 @@ const io = socketIo(server, {
   },
 })
 
-// Never trust X-Forwarded-For unless a proxy is actually configured in front of this process
-app.set('trust proxy', process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : false)
+// Never trust X-Forwarded-For blindly. Railway terminates TLS in front of the
+// container, so one hop is trusted there; otherwise every caller shares the
+// proxy IP and one attacker's auth attempts rate-limit the whole site.
+const behindRailway = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME
+app.set('trust proxy', process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : behindRailway ? 1 : false)
 app.set('io', io)
 app.use(
   helmet({
