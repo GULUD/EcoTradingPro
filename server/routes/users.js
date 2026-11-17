@@ -7,6 +7,23 @@ const router = express.Router()
 
 const asArray = (v) => (Array.isArray(v) ? v : [])
 
+// Serializable writes abort under contention; retry briefly, then report a conflict instead of a 500
+async function serializable(fn) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await prisma.$transaction(fn, { isolationLevel: 'Serializable' })
+    } catch (e) {
+      if (e.code === 'P2034' && attempt < 2) continue
+      if (e.code === 'P2034') {
+        const err = new Error('Concurrent update, please retry')
+        err.status = 409
+        throw err
+      }
+      throw e
+    }
+  }
+}
+
 const toTradeDto = (t) => ({
   id: t.id,
   side: t.side,
@@ -67,7 +84,9 @@ function normalizeOrder(body) {
   const side = body.side || (['buy', 'sell'].includes(body.type) ? body.type : null)
   const rawType = body.orderType || body.type
   const stop = ['stop-loss', 'stop-limit'].includes(rawType)
-  const type = ['limit', 'stop-loss', 'stop-limit'].includes(rawType) ? 'limit' : 'market'
+  // Legacy clients send side in `type` and still pass a price; those are limit orders
+  const legacyWithPrice = ['buy', 'sell'].includes(rawType) && body.price != null
+  const type = ['limit', 'stop-loss', 'stop-limit'].includes(rawType) || legacyWithPrice ? 'limit' : 'market'
   const price = body.price != null ? +body.price : null
   let amount = body.amount != null ? +body.amount : null
   let size = body.size != null ? +body.size : null
@@ -275,18 +294,15 @@ router.post('/trading-bots', authenticateToken, requireUser, async (req, res, ne
 
     // Re-read inside the transaction: the auth snapshot may already be stale and would
     // resurrect bots removed by a parallel delete
-    const debited = await prisma.$transaction(
-      async (tx) => {
-        const u = await tx.user.findUnique({ where: { id: req.user.id } })
-        const list = asArray(u.tradingBots)
-        list.push(bot)
-        return tx.user.updateMany({
-          where: { id: req.user.id, balance: { gte: inv } },
-          data: { balance: { decrement: inv }, tradingBots: list },
-        })
-      },
-      { isolationLevel: 'Serializable' }
-    )
+    const debited = await serializable(async (tx) => {
+      const u = await tx.user.findUnique({ where: { id: req.user.id } })
+      const list = asArray(u.tradingBots)
+      list.push(bot)
+      return tx.user.updateMany({
+        where: { id: req.user.id, balance: { gte: inv } },
+        data: { balance: { decrement: inv }, tradingBots: list },
+      })
+    })
     if (debited.count === 0) {
       return res.status(400).json({ success: false, error: 'Insufficient balance' })
     }
@@ -303,18 +319,15 @@ router.patch('/trading-bots/:botId/:action', authenticateToken, requireUser, asy
       return res.status(400).json({ success: false, error: 'Invalid action' })
     }
     // Same reason as create: write the list only after re-reading it in the transaction
-    const found = await prisma.$transaction(
-      async (tx) => {
-        const u = await tx.user.findUnique({ where: { id: req.user.id } })
-        const list = asArray(u.tradingBots)
-        const bot = list.find((b) => b.id === botId)
-        if (!bot) return false
-        bot.status = action === 'start' ? 'active' : 'paused'
-        await tx.user.update({ where: { id: req.user.id }, data: { tradingBots: list } })
-        return true
-      },
-      { isolationLevel: 'Serializable' }
-    )
+    const found = await serializable(async (tx) => {
+      const u = await tx.user.findUnique({ where: { id: req.user.id } })
+      const list = asArray(u.tradingBots)
+      const bot = list.find((b) => b.id === botId)
+      if (!bot) return false
+      bot.status = action === 'start' ? 'active' : 'paused'
+      await tx.user.update({ where: { id: req.user.id }, data: { tradingBots: list } })
+      return true
+    })
     if (!found) return res.status(404).json({ success: false, error: 'Bot not found' })
     res.json({ success: true })
   } catch (e) {

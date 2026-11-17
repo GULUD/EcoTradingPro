@@ -1,117 +1,64 @@
-
-import React, { useState, useEffect } from 'react'
-import { useAuth } from '../../contexts/AuthContext'
+import React, { useEffect, useState } from 'react'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import axios from '../../utils/axios'
 
+const EMPTY = 'No data yet'
+
+const fmtAmount = (value, digits = 2) =>
+  Number.isFinite(Number(value))
+    ? Number(value).toLocaleString(undefined, { maximumFractionDigits: digits })
+    : null
+
+const fmtGulu = (value, digits = 2) => {
+  const formatted = fmtAmount(value, digits)
+  return formatted === null ? EMPTY : `${formatted} GULU`
+}
+
+const fmtPercent = (value, digits = 2) => {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return EMPTY
+  return `${number >= 0 ? '+' : ''}${number.toFixed(digits)}%`
+}
+
 function Analytics() {
-  const { user } = useAuth()
   const { marketData } = useWebSocket()
-  const [analytics, setAnalytics] = useState({
-    portfolio: {
-      totalValue: 0,
-      totalInvested: 0,
-      totalProfit: 0,
-      profitPercentage: 0,
-      holdings: []
-    },
-    trading: {
-      totalTrades: 0,
-      successfulTrades: 0,
-      successRate: 0,
-      totalVolume: 0,
-      averageTradeSize: 0,
-      bestTrade: 0,
-      worstTrade: 0
-    },
-    performance: {
-      daily: [],
-      weekly: [],
-      monthly: []
-    }
-  })
-  const [timeframe, setTimeframe] = useState('7d')
+  const [timeframe, setTimeframe] = useState('30d')
+  const [portfolioValue, setPortfolioValue] = useState(null)
+  const [performance, setPerformance] = useState(null)
+  const [risk, setRisk] = useState(null)
+  const [composition, setComposition] = useState(null)
+  const [trades, setTrades] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchAnalytics()
-  }, [])
+    let cancelled = false
+    const days = { '1d': 1, '7d': 7, '30d': 30, '90d': 90 }[timeframe] || 30
 
-  const fetchAnalytics = async () => {
-    try {
-      const token = localStorage.getItem('token')
-      const response = await axios.get(`/api/users/analytics?timeframe=${timeframe}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      setAnalytics(response.data)
+    setLoading(true)
+    Promise.allSettled([
+      axios.get('/api/portfolio/value'),
+      axios.get('/api/portfolio/performance', { params: { timeRange: days } }),
+      axios.get('/api/portfolio/risk'),
+      axios.get('/api/portfolio/composition'),
+      axios.get('/api/users/trades'),
+    ]).then(([valueRes, perfRes, riskRes, compositionRes, tradesRes]) => {
+      if (cancelled) return
+      setPortfolioValue(valueRes.status === 'fulfilled' ? valueRes.value.data : null)
+      setPerformance(perfRes.status === 'fulfilled' ? perfRes.value.data : null)
+      setRisk(riskRes.status === 'fulfilled' ? riskRes.value.data : null)
+      setComposition(compositionRes.status === 'fulfilled' ? compositionRes.value.data : null)
+      setTrades(
+        tradesRes.status === 'fulfilled' && Array.isArray(tradesRes.value.data)
+          ? tradesRes.value.data
+          : []
+      )
       setLoading(false)
-    } catch (error) {
-      console.error('Error fetching analytics:', error)
-      // Generate mock data for demo
-      generateMockAnalytics()
-      setLoading(false)
-    }
-  }
-
-  const generateMockAnalytics = () => {
-    const mockPortfolio = {
-      totalValue: 12500.50,
-      totalInvested: 10000,
-      totalProfit: 2500.50,
-      profitPercentage: 25.005,
-      holdings: [
-        { symbol: 'bitcoin', name: 'Bitcoin', amount: 0.25, value: 11250, profit: 2250, profitPercent: 25 },
-        { symbol: 'ethereum', name: 'Ethereum', amount: 2.5, value: 7500, profit: 1500, profitPercent: 25 },
-        { symbol: 'cardano', name: 'Cardano', amount: 1000, value: 500, profit: -250, profitPercent: -33.3 }
-      ]
-    }
-
-    const mockTrading = {
-      totalTrades: 45,
-      successfulTrades: 32,
-      successRate: 71.1,
-      totalVolume: 125000,
-      averageTradeSize: 2777.78,
-      bestTrade: 1250.50,
-      worstTrade: -345.20
-    }
-
-    const mockPerformance = {
-      daily: generateTimeSeriesData(30),
-      weekly: generateTimeSeriesData(12),
-      monthly: generateTimeSeriesData(6)
-    }
-
-    setAnalytics({
-      portfolio: mockPortfolio,
-      trading: mockTrading,
-      performance: mockPerformance
     })
-  }
 
-  const generateTimeSeriesData = (points) => {
-    const data = []
-    let value = 10000
-    for (let i = 0; i < points; i++) {
-      value += (Math.random() - 0.4) * 500
-      data.push({
-        date: new Date(Date.now() - (points - i) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        value: Math.max(value, 5000)
-      })
+    return () => {
+      cancelled = true
     }
-    return data
-  }
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
-  }
-
-  const formatPercentage = (value) => {
-    return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
-  }
+  }, [timeframe])
 
   if (loading) {
     return (
@@ -121,16 +68,30 @@ function Analytics() {
     )
   }
 
+  const holdings = composition?.byAsset || portfolioValue?.holdings || []
+  const totalTrades = Number(performance?.totalTrades) || 0
+  const hasTrades = totalTrades > 0
+  const pnlTrades = trades.filter((trade) => Number.isFinite(Number(trade.pnl)))
+  const bestTrade = pnlTrades.reduce(
+    (best, trade) => (best === null || Number(trade.pnl) > Number(best.pnl) ? trade : best),
+    null
+  )
+  const worstTrade = pnlTrades.reduce(
+    (worst, trade) => (worst === null || Number(trade.pnl) < Number(worst.pnl) ? trade : worst),
+    null
+  )
+  const marketEntries = Object.entries(marketData).slice(0, 5)
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Analytics & Performance</h2>
-          <p className="text-gray-500 mt-1">Comprehensive insights into your trading performance</p>
+          <h2 className="text-2xl font-bold">Analytics &amp; Performance</h2>
+          <p className="text-gray-500 mt-1">Live account metrics from your portfolio</p>
         </div>
         <div className="flex gap-2">
-          {['1d', '7d', '30d', '90d'].map(period => (
+          {['1d', '7d', '30d', '90d'].map((period) => (
             <button
               key={period}
               onClick={() => setTimeframe(period)}
@@ -150,91 +111,102 @@ function Analytics() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="glass rounded-2xl p-6">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Total Portfolio Value</h3>
-          <p className="text-2xl font-bold">{formatCurrency(analytics.portfolio.totalValue)}</p>
+          <p className="text-2xl font-bold">{fmtGulu(portfolioValue?.totalValue)}</p>
           <div className={`text-sm mt-1 ${
-            analytics.portfolio.profitPercentage >= 0 ? 'text-emerald-500' : 'text-red-500'
+            Number(performance?.totalReturn) >= 0 ? 'text-emerald-500' : 'text-red-500'
           }`}>
-            {formatPercentage(analytics.portfolio.profitPercentage)}
+            {performance ? fmtPercent(performance.totalReturn) : EMPTY}
           </div>
         </div>
 
         <div className="glass rounded-2xl p-6">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Total Profit/Loss</h3>
           <p className={`text-2xl font-bold ${
-            analytics.portfolio.totalProfit >= 0 ? 'text-emerald-500' : 'text-red-500'
+            Number(performance?.totalPnL) >= 0 ? 'text-emerald-500' : 'text-red-500'
           }`}>
-            {formatCurrency(analytics.portfolio.totalProfit)}
+            {performance ? fmtGulu(performance.totalPnL) : EMPTY}
           </p>
           <div className="text-sm text-gray-500 mt-1">
-            From {formatCurrency(analytics.portfolio.totalInvested)} invested
+            Cash: {fmtGulu(portfolioValue?.cashBalance)}
           </div>
         </div>
 
         <div className="glass rounded-2xl p-6">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Success Rate</h3>
-          <p className="text-2xl font-bold text-brand-500">{analytics.trading.successRate.toFixed(1)}%</p>
+          <h3 className="text-sm font-medium text-gray-500 mb-2">Win Rate</h3>
+          <p className="text-2xl font-bold text-brand-500">
+            {hasTrades ? `${Number(performance.winRate).toFixed(1)}%` : EMPTY}
+          </p>
           <div className="text-sm text-gray-500 mt-1">
-            {analytics.trading.successfulTrades}/{analytics.trading.totalTrades} trades
+            {hasTrades ? `${performance.winningTrades}/${totalTrades} trades` : 'No closed trades yet'}
           </div>
         </div>
 
         <div className="glass rounded-2xl p-6">
-          <h3 className="text-sm font-medium text-gray-500 mb-2">Total Volume</h3>
-          <p className="text-2xl font-bold">{formatCurrency(analytics.trading.totalVolume)}</p>
+          <h3 className="text-sm font-medium text-gray-500 mb-2">Total Trades</h3>
+          <p className="text-2xl font-bold">{hasTrades ? totalTrades : EMPTY}</p>
           <div className="text-sm text-gray-500 mt-1">
-            Avg: {formatCurrency(analytics.trading.averageTradeSize)}
+            Last {timeframe === '1d' ? '24 hours' : timeframe}
           </div>
         </div>
       </div>
 
-      {/* Performance Chart */}
+      {/* Allocation */}
       <div className="glass rounded-2xl p-6">
-        <h3 className="text-xl font-bold mb-4">Portfolio Performance</h3>
-        <div className="h-64 flex items-end justify-between gap-1">
-          {analytics.performance.daily.slice(-30).map((point, index) => {
-            const height = ((point.value - 5000) / 10000) * 100
-            return (
-              <div
-                key={index}
-                className="bg-brand-500 rounded-t flex-1 min-h-[2px] opacity-80 hover:opacity-100 transition"
-                style={{ height: `${Math.max(height, 2)}%` }}
-                title={`${point.date}: ${formatCurrency(point.value)}`}
-              />
-            )
-          })}
-        </div>
-        <div className="flex justify-between text-xs text-gray-500 mt-2">
-          <span>30 days ago</span>
-          <span>Today</span>
-        </div>
+        <h3 className="text-xl font-bold mb-4">Portfolio Allocation</h3>
+        {holdings.length === 0 ? (
+          <p className="text-sm text-gray-500 py-8 text-center">{EMPTY}</p>
+        ) : (
+          <div className="space-y-4">
+            {holdings.map((holding) => (
+              <div key={holding.asset}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="font-medium">{holding.asset}/GULU</span>
+                  <span className="tabular-nums">
+                    {fmtGulu(holding.value)} · {Number(holding.allocation || 0).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-brand-500 rounded-full"
+                    style={{ width: `${Math.min(Number(holding.allocation) || 0, 100)}%` }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Holdings Breakdown */}
       <div className="glass rounded-2xl p-6">
         <h3 className="text-xl font-bold mb-4">Holdings Analysis</h3>
-        <div className="space-y-4">
-          {analytics.portfolio.holdings.map((holding, index) => (
-            <div key={index} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/5 rounded-lg">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-brand-500 rounded-full flex items-center justify-center text-white font-bold">
-                  {holding.symbol.charAt(0).toUpperCase()}
+        {holdings.length === 0 ? (
+          <p className="text-sm text-gray-500 py-8 text-center">{EMPTY}</p>
+        ) : (
+          <div className="space-y-4">
+            {holdings.map((holding) => (
+              <div key={holding.asset} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-white/5 rounded-lg">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-brand-500 rounded-full flex items-center justify-center text-white font-bold">
+                    {holding.asset.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h4 className="font-semibold">{holding.asset}</h4>
+                    <p className="text-sm text-gray-500">
+                      {fmtAmount(holding.quantity, 8)} {holding.asset}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-semibold">{holding.name}</h4>
-                  <p className="text-sm text-gray-500">{holding.amount} {holding.symbol.toUpperCase()}</p>
+                <div className="text-right">
+                  <p className="font-semibold">{fmtGulu(holding.value)}</p>
+                  <p className="text-sm text-gray-500">
+                    Price {fmtGulu(holding.marketPrice)}
+                  </p>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="font-semibold">{formatCurrency(holding.value)}</p>
-                <p className={`text-sm ${
-                  holding.profitPercent >= 0 ? 'text-emerald-500' : 'text-red-500'
-                }`}>
-                  {formatPercentage(holding.profitPercent)}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Trading Statistics */}
@@ -245,45 +217,49 @@ function Analytics() {
             <div className="flex justify-between">
               <span className="text-gray-500">Best Trade</span>
               <span className="font-semibold text-emerald-500">
-                {formatCurrency(analytics.trading.bestTrade)}
+                {bestTrade ? fmtGulu(bestTrade.pnl) : EMPTY}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Worst Trade</span>
               <span className="font-semibold text-red-500">
-                {formatCurrency(analytics.trading.worstTrade)}
+                {worstTrade ? fmtGulu(worstTrade.pnl) : EMPTY}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500">Average Trade Size</span>
+              <span className="text-gray-500">Losing Trades</span>
               <span className="font-semibold">
-                {formatCurrency(analytics.trading.averageTradeSize)}
+                {hasTrades ? performance.losingTrades : EMPTY}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Total Trades</span>
-              <span className="font-semibold">{analytics.trading.totalTrades}</span>
+              <span className="font-semibold">{hasTrades ? totalTrades : EMPTY}</span>
             </div>
           </div>
         </div>
 
         <div className="glass rounded-2xl p-6">
           <h3 className="text-xl font-bold mb-4">Market Insights</h3>
-          <div className="space-y-4">
-            {Object.entries(marketData).slice(0, 5).map(([symbol, data]) => (
-              <div key={symbol} className="flex justify-between items-center">
-                <span className="capitalize font-medium">{symbol}</span>
-                <div className="text-right">
-                  <p className="font-semibold">{formatCurrency(data.price)}</p>
-                  <p className={`text-sm ${
-                    data.change24h >= 0 ? 'text-emerald-500' : 'text-red-500'
-                  }`}>
-                    {formatPercentage(data.change24h)}
-                  </p>
+          {marketEntries.length === 0 ? (
+            <p className="text-sm text-gray-500 py-8 text-center">{EMPTY}</p>
+          ) : (
+            <div className="space-y-4">
+              {marketEntries.map(([symbol, data]) => (
+                <div key={symbol} className="flex justify-between items-center">
+                  <span className="capitalize font-medium">{symbol}</span>
+                  <div className="text-right">
+                    <p className="font-semibold">{fmtGulu(data.price)}</p>
+                    <p className={`text-sm ${
+                      Number(data.change) >= 0 ? 'text-emerald-500' : 'text-red-500'
+                    }`}>
+                      {fmtPercent(data.change)}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -297,28 +273,26 @@ function Analytics() {
             </div>
             <h4 className="font-semibold mb-2">Portfolio Diversification</h4>
             <p className="text-sm text-gray-500">
-              {analytics.portfolio.holdings.length > 3 ? 'Well diversified' : 'Consider diversifying'}
+              {holdings.length ? `${holdings.length} asset(s) held` : EMPTY}
             </p>
           </div>
-          
+
           <div className="text-center">
             <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
               <span className="text-2xl text-blue-500">⚖️</span>
             </div>
-            <h4 className="font-semibold mb-2">Risk Level</h4>
+            <h4 className="font-semibold mb-2">Concentration Risk</h4>
             <p className="text-sm text-gray-500">
-              {analytics.trading.successRate > 70 ? 'Conservative' : 'Moderate'}
+              {risk ? `${Number(risk.concentrationRisk).toFixed(1)}%` : EMPTY}
             </p>
           </div>
-          
+
           <div className="text-center">
             <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
               <span className="text-2xl text-orange-500">🎯</span>
             </div>
-            <h4 className="font-semibold mb-2">Trading Frequency</h4>
-            <p className="text-sm text-gray-500">
-              {analytics.trading.totalTrades > 50 ? 'Active trader' : 'Casual trader'}
-            </p>
+            <h4 className="font-semibold mb-2">Correlation Risk</h4>
+            <p className="text-sm text-gray-500">{risk?.correlationRisk || EMPTY}</p>
           </div>
         </div>
       </div>

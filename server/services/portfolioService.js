@@ -5,7 +5,8 @@ class PortfolioService {
     const coins = await prisma.marketData.findMany({ where: { delisted: false } })
     const map = {}
     for (const c of coins) {
-      map[c.symbol] = { price: c.manualPrice ?? c.price, change24h: c.change24h, volume24h: c.volume24h }
+      // Last traded price first; manualPrice is only an anchor before the first fill
+      map[c.symbol] = { price: c.price > 0 ? c.price : c.manualPrice, change24h: c.change24h, volume24h: c.volume24h }
     }
     return map
   }

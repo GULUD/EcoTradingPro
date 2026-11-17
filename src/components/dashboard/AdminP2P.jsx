@@ -51,11 +51,13 @@ function AdminP2P() {
   const [supply, setSupply] = useState(null)
   const [issues, setIssues] = useState([])
   const [users, setUsers] = useState([])
-  const [visibleAds, setVisibleAds] = useState([])
   const [allAds, setAllAds] = useState([])
   const [limitEdits, setLimitEdits] = useState({})
   const [adForm, setAdForm] = useState({ id: '', type: 'bank', account: '', name: '', status: 'active' })
   const [issueForm, setIssueForm] = useState({ type: 'mint', userId: '', amount: '', note: '' })
+  const [cancelDialog, setCancelDialog] = useState(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelError, setCancelError] = useState('')
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -114,18 +116,6 @@ function AdminP2P() {
     }
   }
 
-  const loadVisibleAds = async () => {
-    try {
-      const [sellResponse, buyResponse] = await Promise.all([
-        axios.get('/api/p2p/ads', { params: { side: 'sell' } }),
-        axios.get('/api/p2p/ads', { params: { side: 'buy' } }),
-      ])
-      setVisibleAds([...(sellResponse.data.ads || []), ...(buyResponse.data.ads || [])])
-    } catch (err) {
-      setVisibleAds([])
-    }
-  }
-
   // Hidden ads (bots without a payout account) only show up through the admin list
   const loadAllAds = async () => {
     try {
@@ -154,7 +144,6 @@ function AdminP2P() {
     loadSupply()
     loadIssues()
     loadUsers()
-    loadVisibleAds()
     loadAllAds()
   }, [])
 
@@ -188,7 +177,7 @@ function AdminP2P() {
       if (limit > 0) payload.maxOrderGulu = limit
       await axios.post(`/api/admin/p2p/merchants/${merchant.id}/review`, payload)
       setNotice(`${merchant.businessName} set to ${status}`)
-      await Promise.all([loadMerchants(merchantStatus), loadStats()])
+      await Promise.all([loadMerchants(merchantStatus), loadAllAds(), loadStats()])
     })
   }
 
@@ -208,15 +197,44 @@ function AdminP2P() {
     })
   }
 
-  const resolveOrder = (order, action) => {
-    const note = action === 'cancel' ? window.prompt('Reason for cancelling this order') : ''
-    if (action === 'cancel' && note === null) return
-    if (action === 'complete' && !window.confirm('Release escrow and mark this order completed?')) return
+  const resolveOrder = async (order, action) => {
+    if (action === 'cancel') {
+      setCancelDialog(order)
+      setCancelReason('')
+      setCancelError('')
+      return
+    }
+    if (!window.confirm('Release escrow and mark this order completed?')) return
     run(async () => {
-      await axios.post(`/api/admin/p2p/orders/${order.id}/resolve`, { action, note: note || undefined })
-      setNotice(`Order ${action === 'complete' ? 'completed' : 'cancelled'}`)
+      await axios.post(`/api/admin/p2p/orders/${order.id}/resolve`, { action })
+      setNotice('Order completed')
       await Promise.all([loadOrders(orderStatus), loadStats()])
     })
+  }
+
+  const submitCancelOrder = async () => {
+    if (!cancelDialog || busy) return
+    const reason = cancelReason.trim()
+    if (!reason) {
+      setCancelError('Enter a reason for cancelling this order')
+      return
+    }
+    setBusy(true)
+    setCancelError('')
+    setError('')
+    try {
+      await axios.post(`/api/admin/p2p/orders/${cancelDialog.id}/resolve`, {
+        action: 'cancel',
+        note: reason,
+      })
+      setCancelDialog(null)
+      setNotice('Order cancelled')
+      await Promise.all([loadOrders(orderStatus), loadStats()])
+    } catch (err) {
+      setCancelError(err.response?.data?.error || 'Failed to cancel the order')
+    } finally {
+      setBusy(false)
+    }
   }
 
   const saveAd = (event) => {
@@ -236,7 +254,6 @@ function AdminP2P() {
         status: adForm.status,
       })
       setNotice(`Ad ${id} updated`)
-      await loadVisibleAds()
       await loadAllAds()
     })
   }
@@ -686,6 +703,44 @@ function AdminP2P() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+      {cancelDialog && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="backdrop-filter backdrop-blur-lg bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold">Cancel order</h3>
+                <p className="text-sm text-gray-400">
+                  {fmt(cancelDialog.amount)} GULU · {fmt(cancelDialog.fiatAmount, 2)} {cancelDialog.fiat}
+                </p>
+              </div>
+              <button
+                onClick={() => setCancelDialog(null)}
+                className="text-gray-400 hover:text-gray-200"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Reason</label>
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              rows={3}
+              className={input}
+              placeholder="Explain why this order is being cancelled"
+            />
+            {cancelError && <p className="text-sm text-red-400 mt-2">{cancelError}</p>}
+            <div className="flex gap-3 mt-4">
+              <button onClick={submitCancelOrder} disabled={busy} className={`${dangerBtn} flex-1`}>
+                {busy ? 'Cancelling…' : 'Cancel order'}
+              </button>
+              <button onClick={() => setCancelDialog(null)} className={`${ghostBtn} flex-1`}>
+                Back
+              </button>
             </div>
           </div>
         </div>

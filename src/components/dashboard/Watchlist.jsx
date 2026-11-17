@@ -32,11 +32,9 @@ function Watchlist() {
   useEffect(() => {
     if (socket) {
       socket.on('priceUpdate', handlePriceUpdate)
-      socket.on('alertTriggered', handleAlertTriggered)
-      
+
       return () => {
         socket.off('priceUpdate', handlePriceUpdate)
-        socket.off('alertTriggered', handleAlertTriggered)
       }
     }
   }, [socket])
@@ -76,11 +74,6 @@ function Watchlist() {
 
   const handlePriceUpdate = (data) => {
     setMarketPrices(prev => ({ ...prev, ...data }))
-  }
-
-  const handleAlertTriggered = (alert) => {
-    // Handle triggered alert notification
-    console.log('Alert triggered:', alert)
   }
 
   const addToWatchlist = async (asset) => {

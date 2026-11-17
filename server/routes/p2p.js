@@ -60,7 +60,7 @@ const toOrderDto = (o, viewerId) => {
     completedAt: o.completedAt,
     canPay: role === 'buyer' && o.status === 'pending_payment',
     canRelease: role === 'seller' && o.status === 'paid',
-    canCancel: o.status === 'pending_payment' || (o.status === 'paid' && role === 'buyer'),
+    canCancel: o.status === 'pending_payment',
     canDispute: o.status === 'paid',
     closed,
   }
@@ -194,9 +194,10 @@ router.post('/merchant/ads', authenticateToken, requireUser, async (req, res, ne
     const methods = methodsOf(paymentMethods).filter((m) => m && m.type && m.account)
     if (!methods.length) return res.status(400).json({ success: false, error: 'at least one payment method required' })
 
-    if (side === 'sell') {
-      // Listing depth must be backed by free balance; otherwise the same GULU can back unlimited ads
-      const check = await writeTx(async (tx) => {
+    // Create and its liquidity check share one transaction, otherwise two parallel listings
+    // can both pass the same balance read
+    const result = await writeTx(async (tx) => {
+      if (side === 'sell') {
         const user = await tx.user.findUnique({ where: { id: req.user.id } })
         const open = await tx.p2PAd.aggregate({
           where: { merchantId: merchant.id, side: 'sell', status: { in: ['active', 'paused'] } },
@@ -204,26 +205,26 @@ router.post('/merchant/ads', authenticateToken, requireUser, async (req, res, ne
         })
         const committed = open._sum.available || 0
         if (!user || user.balance < committed + avail) return fail(400, 'Insufficient GULU balance')
-        return { ok: true }
-      })
-      if (check.reject) return res.status(check.reject.status).json({ success: false, error: check.reject.error })
-    }
+      }
 
-    const ad = await prisma.p2PAd.create({
-      data: {
-        merchantId: merchant.id,
-        side,
-        price: p,
-        fiat: String(fiat || 'CNY').toUpperCase(),
-        minAmount: pmin,
-        maxAmount: pmax,
-        available: avail,
-        paymentMethods: methods,
-        terms: terms || null,
-      },
-      include: { merchant: true },
+      const created = await tx.p2PAd.create({
+        data: {
+          merchantId: merchant.id,
+          side,
+          price: p,
+          fiat: String(fiat || 'CNY').toUpperCase(),
+          minAmount: pmin,
+          maxAmount: pmax,
+          available: avail,
+          paymentMethods: methods,
+          terms: terms || null,
+        },
+        include: { merchant: true },
+      })
+      return { ad: created }
     })
-    res.json({ success: true, ad: toAdDto(ad) })
+    if (result.reject) return res.status(result.reject.status).json({ success: false, error: result.reject.error })
+    res.json({ success: true, ad: toAdDto(result.ad) })
   } catch (e) {
     next(e)
   }
@@ -258,13 +259,18 @@ router.patch('/merchant/ads/:id', authenticateToken, requireUser, async (req, re
     }
 
     const updated = await writeTx(async (tx) => {
-      if (ad.side === 'sell' && data.available != null) {
+      const nextAvailable = data.available != null ? data.available : ad.available
+      const nextStatus = data.status != null ? data.status : ad.status
+      // Reactivating a listing re-exposes its depth, so the balance check must run on any
+      // update that leaves a sell ad visible or changes its size
+      const needsBacking = ad.side === 'sell' && (data.available != null || nextStatus === 'active')
+      if (needsBacking && nextStatus !== 'closed') {
         const open = await tx.p2PAd.aggregate({
           where: { id: { not: ad.id }, merchantId: merchant.id, side: 'sell', status: { in: ['active', 'paused'] } },
           _sum: { available: true },
         })
         const user = await tx.user.findUnique({ where: { id: merchant.userId } })
-        if (!user || user.balance < (open._sum.available || 0) + data.available) {
+        if (!user || user.balance < (open._sum.available || 0) + nextAvailable) {
           return fail(400, 'Available exceeds your GULU balance')
         }
       }
@@ -317,7 +323,8 @@ router.post('/orders', authenticateToken, requireUser, async (req, res, next) =>
         const since = new Date()
         since.setHours(0, 0, 0, 0)
         const today = await tx.p2POrder.aggregate({
-          where: { sellerId: ad.merchant.userId, createdAt: { gte: since }, status: { in: ['pending_payment', 'paid', 'disputed', 'completed'] } },
+          // Count by merchant, not by seller id: buy-side ads have the user as seller
+          where: { ad: { merchantId: ad.merchantId }, createdAt: { gte: since }, status: { in: ['pending_payment', 'paid', 'disputed', 'completed'] } },
           _sum: { amount: true },
         })
         if ((today._sum.amount || 0) + gulu > ad.merchant.dailyLimitGulu) {
@@ -500,11 +507,16 @@ async function refundOrder(orderId, actor, reason, { allowPaid = false } = {}) {
       where: { id: order.sellerId },
       data: { locked: { decrement: order.amount }, balance: { increment: order.amount } },
     })
-    // Closed ads stay closed; only live ads get their displayed liquidity back
-    if (order.ad.status !== 'closed') {
+    // Closed ads stay closed; paused ads stay paused so a manual or admin takedown is not undone
+    if (order.ad.status !== 'closed' && order.ad.status !== 'paused') {
       await tx.p2PAd.update({
         where: { id: order.adId },
         data: { available: { increment: order.amount }, status: 'active' },
+      })
+    } else if (order.ad.status !== 'closed') {
+      await tx.p2PAd.update({
+        where: { id: order.adId },
+        data: { available: { increment: order.amount } },
       })
     }
     await tx.transaction.create({

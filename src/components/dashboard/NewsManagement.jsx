@@ -14,10 +14,8 @@ function NewsManagement() {
     title: '',
     content: '',
     category: 'general',
-    priority: 'normal',
-    isPublished: false,
-    tags: '',
-    summary: ''
+    priority: '0',
+    isPublished: false
   })
 
   const categories = [
@@ -30,10 +28,9 @@ function NewsManagement() {
   ]
 
   const priorities = [
-    { value: 'low', label: 'Low', color: 'bg-gray-100 text-gray-700' },
-    { value: 'normal', label: 'Normal', color: 'bg-blue-100 text-blue-700' },
-    { value: 'high', label: 'High', color: 'bg-orange-100 text-orange-700' },
-    { value: 'urgent', label: 'Urgent', color: 'bg-red-100 text-red-700' }
+    { value: '0', label: 'Normal', color: 'bg-blue-100 text-blue-700' },
+    { value: '1', label: 'High', color: 'bg-orange-100 text-orange-700' },
+    { value: '2', label: 'Urgent', color: 'bg-red-100 text-red-700' }
   ]
 
   useEffect(() => {
@@ -65,9 +62,12 @@ function NewsManagement() {
     try {
       const token = localStorage.getItem('token')
       const newsData = {
-        ...formData,
-        tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-        author: user.name || `${user.firstName} ${user.lastName}`
+        title: formData.title,
+        content: formData.content,
+        category: formData.category,
+        priority: Number(formData.priority),
+        isPublished: formData.isPublished,
+        author: user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Admin'
       }
 
       if (editingNews) {
@@ -93,12 +93,10 @@ function NewsManagement() {
     setEditingNews(newsItem)
     setFormData({
       title: newsItem.title,
-      content: newsItem.content,
-      category: newsItem.category,
-      priority: newsItem.priority,
-      isPublished: newsItem.isPublished,
-      tags: newsItem.tags.join(', '),
-      summary: newsItem.summary || ''
+      content: newsItem.content || '',
+      category: newsItem.category || 'general',
+      priority: String(newsItem.priority ?? 0),
+      isPublished: newsItem.isPublished
     })
     setShowForm(true)
   }
@@ -140,17 +138,19 @@ function NewsManagement() {
       title: '',
       content: '',
       category: 'general',
-      priority: 'normal',
-      isPublished: false,
-      tags: '',
-      summary: ''
+      priority: '0',
+      isPublished: false
     })
     setEditingNews(null)
     setShowForm(false)
   }
 
   const getPriorityStyle = (priority) => {
-    return priorities.find(p => p.value === priority)?.color || 'bg-gray-100 text-gray-700'
+    return priorities.find(p => p.value === String(priority))?.color || 'bg-gray-100 text-gray-700'
+  }
+
+  const getPriorityLabel = (priority) => {
+    return priorities.find(p => p.value === String(priority))?.label || 'Normal'
   }
 
   if (loading) {
@@ -199,7 +199,7 @@ function NewsManagement() {
         <div className="glass rounded-2xl p-6">
           <h3 className="text-lg font-semibold mb-2">High Priority</h3>
           <p className="text-3xl font-bold text-red-500">
-            {news.filter(n => n.priority === 'high' || n.priority === 'urgent').length}
+            {news.filter(n => Number(n.priority) >= 1).length}
           </p>
         </div>
       </div>
@@ -276,28 +276,6 @@ function NewsManagement() {
                     ))}
                   </select>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Tags (comma separated)</label>
-                  <input
-                    type="text"
-                    value={formData.tags}
-                    onChange={(e) => setFormData({...formData, tags: e.target.value})}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    placeholder="bitcoin, trading, analysis"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Summary</label>
-                <textarea
-                  value={formData.summary}
-                  onChange={(e) => setFormData({...formData, summary: e.target.value})}
-                  rows={2}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  placeholder="Brief summary of the article"
-                />
               </div>
 
               <div>
@@ -370,7 +348,7 @@ function NewsManagement() {
                     <div className="flex items-center gap-3 mb-2">
                       <h4 className="font-semibold text-lg">{article.title}</h4>
                       <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getPriorityStyle(article.priority)}`}>
-                        {article.priority.toUpperCase()}
+                        {getPriorityLabel(article.priority)}
                       </span>
                       <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                         article.isPublished 
@@ -382,24 +360,10 @@ function NewsManagement() {
                     </div>
                     
                     <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                      Category: {categories.find(c => c.value === article.category)?.label} | 
-                      Author: {article.author} | 
+                      Category: {categories.find(c => c.value === article.category)?.label || 'General'} | 
+                      Author: {article.author || 'Admin'} | 
                       Created: {new Date(article.createdAt).toLocaleDateString()}
                     </div>
-                    
-                    {article.summary && (
-                      <p className="text-gray-700 dark:text-gray-300 mb-2">{article.summary}</p>
-                    )}
-                    
-                    {article.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-3">
-                        {article.tags.map((tag, index) => (
-                          <span key={index} className="px-2 py-1 bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-xs rounded">
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
                   
                   <div className="flex gap-2 ml-4">
@@ -429,7 +393,7 @@ function NewsManagement() {
                 </div>
                 
                 <div className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                  {article.content.substring(0, 200)}...
+                  {(article.content || '').substring(0, 200)}
                 </div>
               </div>
             ))}

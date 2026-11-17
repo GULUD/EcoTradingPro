@@ -104,7 +104,7 @@ function LandingPage() {
                   <path d="M24 24h16M20 32h24M24 40h16" stroke="#0A84FF" strokeWidth="2.5" strokeLinecap="round"/>
                 </svg>
                 <span className="text-lg sm:text-xl font-extrabold tracking-tight">
-                  <span className="text-brand-500">CRYPTO</span> TRADE <span className="text-emerald-500">PRO</span>
+                  <span className="text-brand-500">Eco</span>Trading<span className="text-emerald-500">Pro</span>
                 </span>
               </Link>
 
@@ -118,7 +118,7 @@ function LandingPage() {
                 <Link to="/auth/login" className="px-4 py-2 rounded-lg border border-brand-500 text-brand-600 hover:bg-brand-500 hover:text-white transition font-medium">
                   User Login
                 </Link>
-                <Link to="/admin/login" className="px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition font-semibold">
+                <Link to="/auth/admin" className="px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition font-semibold">
                   Admin Access
                 </Link>
                 <button 
@@ -361,7 +361,7 @@ function LandingPage() {
                   <circle cx="32" cy="32" r="28" fill="#0A84FF" opacity=".14"/>
                   <path d="M16 34c8-6 14-14 16-24 2 10 8 18 16 24-8 6-14 14-16 24-2-10-8-18-16-24z" fill="#10B981"/>
                 </svg>
-                <span className="font-extrabold">CRYPTOTRADE PRO</span>
+                <span className="font-extrabold">EcoTradingPro</span>
               </div>
               <p className="mt-3 text-sm text-gray-500">Professional cryptocurrency trading platform.</p>
             </div>
@@ -391,7 +391,7 @@ function LandingPage() {
               </ul>
             </div>
           </div>
-          <p className="mt-10 text-xs text-gray-500">&copy; {new Date().getFullYear()} CryptoTrade Pro. All rights reserved.</p>
+          <p className="mt-10 text-xs text-gray-500">&copy; {new Date().getFullYear()} EcoTradingPro. All rights reserved.</p>
         </div>
       </footer>
     </div>

@@ -69,9 +69,10 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size },
 
   if (type === 'limit' && !(price > 0)) throw new TradeError('limit price required')
 
-  // Two self-dealt accounts could otherwise print any price and move the market reference
+  // Two self-dealt accounts could otherwise print any price and move the market reference.
+  // Anchor on the last traded price; manualPrice is only a fallback before the first fill.
   if (type === 'limit') {
-    const reference = coin.manualPrice ?? coin.price
+    const reference = coin.price > 0 ? coin.price : coin.manualPrice
     if (reference > 0 && Math.abs(price / reference - 1) > 0.2) {
       throw new TradeError('limit price is too far from the market price')
     }
@@ -164,6 +165,8 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size },
       const fills = []
       const makerUpdates = []
       const tradeRows = []
+      // House quotes have no account, so the GULU they pay or receive must be minted or burned
+      let supplyDelta = 0
 
       for (const level of levels) {
         if (remaining <= EPS) break
@@ -196,6 +199,17 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size },
         if (sellerId) {
           const seller = await account(sellerId)
           seller.balance = r8(seller.balance + fillSize * px * (1 - FEE_RATE))
+        }
+
+        // Keep issuance in step with balances: no counterparty account means no escrow existed
+        const notional = fillSize * px
+        if (side === 'buy') {
+          if (level.userId) supplyDelta -= notional * FEE_RATE
+          else supplyDelta -= notional
+        } else if (level.userId) {
+          supplyDelta -= notional * FEE_RATE
+        } else {
+          supplyDelta += notional * (1 - FEE_RATE)
         }
 
         makerUpdates.push({ id: level.id, filled: r8(level.filled + fillSize), size: level.size })
@@ -235,6 +249,20 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size },
       if (tradeRows.length) {
         await tx.trade.createMany({
           data: tradeRows.map((t) => ({ userId: t.userId, symbol, side: t.side, size: t.size, price: t.price, pnl: 0, source: 'user', time: now })),
+        })
+      }
+
+      // Single audit row per order so totalSupply always equals balances plus fees burned
+      if (Math.abs(supplyDelta) > EPS) {
+        await tx.guluIssue.create({
+          data: {
+            type: supplyDelta > 0 ? 'mint' : 'burn',
+            amount: r8(Math.abs(supplyDelta)),
+            userId,
+            operator: 'system:market',
+            note: `house fill ${symbol} ${side} ${filled}`,
+            ts: now,
+          },
         })
       }
 
@@ -460,10 +488,12 @@ async function buildCandles(symbol, timeframe) {
 
   const trades = await prisma.trade.findMany({
     where: { symbol, time: { gte: BigInt(from) } },
-    orderBy: { time: 'asc' },
+    // Newest first so a busy market keeps its recent candles; reversed below for charting
+    orderBy: { time: 'desc' },
     take: 20000,
   })
   if (!trades.length) return []
+  trades.reverse()
 
   const buckets = new Map()
   for (const t of trades) {

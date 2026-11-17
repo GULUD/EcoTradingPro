@@ -34,18 +34,27 @@ router.get('/', authenticateToken, (req, res) => {
 
 router.post('/:competitionId/join', authenticateToken, async (req, res, next) => {
   try {
-    const list = Array.isArray(req.user.competitions) ? req.user.competitions : []
-    if (list.some((c) => c.competitionId === req.params.competitionId)) {
+    // Re-read inside the transaction so two parallel joins cannot overwrite each other
+    const joined = await prisma.$transaction(
+      async (tx) => {
+        const u = await tx.user.findUnique({ where: { id: req.user.id } })
+        const list = Array.isArray(u.competitions) ? u.competitions : []
+        if (list.some((c) => c.competitionId === req.params.competitionId)) return false
+        list.push({
+          competitionId: req.params.competitionId,
+          joinedAt: new Date().toISOString(),
+          startingBalance: 10000,
+          currentBalance: 10000,
+          trades: [],
+        })
+        await tx.user.update({ where: { id: req.user.id }, data: { competitions: list } })
+        return true
+      },
+      { isolationLevel: 'Serializable' }
+    )
+    if (!joined) {
       return res.status(400).json({ success: false, error: 'Already joined this competition' })
     }
-    list.push({
-      competitionId: req.params.competitionId,
-      joinedAt: new Date().toISOString(),
-      startingBalance: 10000,
-      currentBalance: 10000,
-      trades: [],
-    })
-    await prisma.user.update({ where: { id: req.user.id }, data: { competitions: list } })
     res.json({ success: true })
   } catch (e) {
     next(e)

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
-import { Link, useNavigate, Routes, Route } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useWebSocket } from '../../contexts/WebSocketContext'
 import axios from '../../utils/axios'
 import NewsManagement from './NewsManagement'
 import { CoinManagement, BotFormation, PriceChart } from './AdminControls'
@@ -23,69 +23,96 @@ import {
 } from 'lucide-react'
 import AdminP2P from './AdminP2P'
 
-// Placeholder for AdminDashboardHome and UserManagement components if they were defined elsewhere
-const AdminDashboardHome = () => <div>Dashboard Content</div>;
-const UserManagement = () => <div>User Management Content</div>;
+const formatUptime = (seconds) => {
+  const total = Number(seconds)
+  if (!Number.isFinite(total)) return 'No data yet'
+  const days = Math.floor(total / 86400)
+  const hours = Math.floor((total % 86400) / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
 
 
 function AdminDashboard() {
   const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
+  const { isConnected, reconnect } = useWebSocket()
   const [users, setUsers] = useState([])
+  const [stats, setStats] = useState(null)
   const [selectedUser, setSelectedUser] = useState(null)
   const [newBalance, setNewBalance] = useState('')
+  const [balanceError, setBalanceError] = useState('')
+  const [confirmingBalance, setConfirmingBalance] = useState(false)
+  const [savingBalance, setSavingBalance] = useState(false)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   useEffect(() => {
-    fetchUsers()
-    // Update stats periodically
-    const interval = setInterval(() => {
-      updateStats()
-    }, 10000)
-    return () => clearInterval(interval)
+    Promise.allSettled([fetchUsers(), fetchStats()]).then(() => setLoading(false))
   }, [])
 
   const fetchUsers = async () => {
     try {
-      const token = localStorage.getItem('token')
-      const response = await axios.get('/api/admin/users', {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      setUsers(response.data)
-      setLoading(false)
+      const response = await axios.get('/api/admin/users')
+      setUsers(Array.isArray(response.data) ? response.data : [])
     } catch (error) {
-      console.error('Error fetching users:', error)
-      setLoading(false)
+      console.error('Error fetching users:', error.message)
     }
   }
 
-  const updateUserBalance = async (userId, balance) => {
-    const value = Number(balance)
+  const fetchStats = async () => {
+    try {
+      const response = await axios.get('/api/admin/stats')
+      setStats(response.data)
+    } catch (error) {
+      console.error('Error fetching stats:', error.message)
+    }
+  }
+
+  const openBalanceEditor = (targetUser) => {
+    setSelectedUser(targetUser)
+    setNewBalance('')
+    setBalanceError('')
+    setConfirmingBalance(false)
+  }
+
+  const closeBalanceEditor = () => {
+    setSelectedUser(null)
+    setNewBalance('')
+    setBalanceError('')
+    setConfirmingBalance(false)
+  }
+
+  const requestBalanceUpdate = () => {
+    if (!selectedUser) return
+    const value = Number(newBalance)
     // Number('') is 0, so empty input needs its own guard before reaching the API
-    if (String(balance).trim() === '' || !Number.isFinite(value) || value < 0) {
-      alert('Enter a balance of zero or more')
+    if (String(newBalance).trim() === '' || !Number.isFinite(value) || value < 0) {
+      setBalanceError('Enter a balance of zero or more')
       return
     }
-    try {
-      const token = localStorage.getItem('token')
-      const response = await axios.put(`/api/admin/users/${userId}/balance`,
-        { balance: value },
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      setUsers(users.map(user => user._id === userId ? response.data : user))
-      setSelectedUser(null)
-      setNewBalance('')
-    } catch (error) {
-      console.error('Error updating balance:', error)
-      alert('Error updating balance')
-    }
+    setBalanceError('')
+    setConfirmingBalance(true)
   }
 
-  const updateStats = () => {
-    // Simulate real-time updates for demo purposes
-    // In production, this would fetch real data
+  const confirmBalanceUpdate = async () => {
+    if (!selectedUser || savingBalance) return
+    const value = Number(newBalance)
+    setSavingBalance(true)
+    setBalanceError('')
+    try {
+      const response = await axios.put(`/api/admin/users/${selectedUser.id}/balance`, { balance: value })
+      setUsers((prev) => prev.map((item) => (item.id === selectedUser.id ? response.data : item)))
+      closeBalanceEditor()
+      fetchStats()
+    } catch (error) {
+      setBalanceError(error.response?.data?.error || 'Error updating balance')
+    } finally {
+      setSavingBalance(false)
+    }
   }
 
   const toggleSidebar = () => {
@@ -236,11 +263,19 @@ function AdminDashboard() {
               <ArrowLeftRight className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">P2P / GULU</span>}
             </button>
-            <button className="w-full flex items-center px-4 py-3 rounded-xl hover:bg-gray-800/50 text-gray-300 hover:text-white transition-all duration-300">
+            <button
+              className="w-full flex items-center px-4 py-3 rounded-xl text-gray-500 opacity-50 cursor-not-allowed"
+              disabled
+              title="Coming soon"
+            >
               <Bell className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">Notifications</span>}
             </button>
-            <button className="w-full flex items-center px-4 py-3 rounded-xl hover:bg-gray-800/50 text-gray-300 hover:text-white transition-all duration-300">
+            <button
+              className="w-full flex items-center px-4 py-3 rounded-xl text-gray-500 opacity-50 cursor-not-allowed"
+              disabled
+              title="Coming soon"
+            >
               <Settings className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">Settings</span>}
             </button>
@@ -297,17 +332,30 @@ function AdminDashboard() {
               </button>
 
               {/* Real-time indicator */}
-              <div className="flex items-center space-x-2 px-3 py-2 bg-green-500/20 rounded-lg border border-green-500/30">
-                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-green-400 text-sm font-medium">Live</span>
-              </div>
+              {isConnected ? (
+                <div className="flex items-center space-x-2 px-3 py-2 bg-green-500/20 rounded-lg border border-green-500/30">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-green-400 text-sm font-medium">Live</span>
+                </div>
+              ) : (
+                <button
+                  onClick={reconnect}
+                  className="flex items-center space-x-2 px-3 py-2 bg-red-500/20 rounded-lg border border-red-500/30 hover:bg-red-500/30 transition-colors"
+                >
+                  <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                  <span className="text-red-400 text-sm font-medium">Offline · Reconnect</span>
+                </button>
+              )}
 
               {/* Notifications */}
-              <button className="relative p-2 rounded-xl hover:bg-gray-700/50 transition-colors">
+              <button
+                className="relative p-2 rounded-xl text-gray-500 opacity-50 cursor-not-allowed"
+                disabled
+                title="Coming soon"
+              >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-5 5v-5z"></path>
                 </svg>
-                <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold animate-bounce">3</div>
               </button>
 
               {/* Logout */}
@@ -323,83 +371,60 @@ function AdminDashboard() {
 
         {/* Main Content Area */}
         <main className="p-6">
-          <Routes>
-            <Route path="/" element={<AdminDashboardHome />} />
-            <Route path="/users" element={<UserManagement />} />
-            <Route path="/news" element={<NewsManagement />} />
-            <Route path="/analytics" element={<div>Analytics coming soon...</div>} />
-          </Routes>
-
           {activeTab === 'dashboard' && (
             <>
               {/* Stats Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 {/* Total Users */}
-                <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6 hover:transform hover:-translate-y-1 transition-all duration-300">
+                <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center">
                       <Users className="w-6 h-6 text-blue-400" />
                     </div>
-                    <div className="text-green-400 text-sm font-medium flex items-center">
-                      <TrendingUp className="w-4 h-4 mr-1" /> +12%
-                    </div>
                   </div>
-                  <h3 className="text-2xl font-bold mb-1">{users.length}</h3>
+                  <h3 className="text-2xl font-bold mb-1">{stats ? stats.totalUsers : users.length}</h3>
                   <p className="text-gray-400 text-sm">Total Users</p>
-                  <div className="mt-4 h-2 bg-gray-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full animate-pulse" style={{width: '78%'}}></div>
-                  </div>
                 </div>
 
                 {/* Active Traders */}
-                <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6 hover:transform hover:-translate-y-1 transition-all duration-300">
+                <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center">
                       <TrendingUp className="w-6 h-6 text-green-400" />
                     </div>
-                    <div className="text-green-400 text-sm font-medium flex items-center">
-                      <TrendingUp className="w-4 h-4 mr-1" /> +8%
-                    </div>
                   </div>
-                  <h3 className="text-2xl font-bold mb-1">{users.filter(u => u.isActive).length}</h3>
+                  <h3 className="text-2xl font-bold mb-1">
+                    {stats ? stats.activeUsers : users.filter(u => u.isActive).length}
+                  </h3>
                   <p className="text-gray-400 text-sm">Active Traders</p>
-                  <div className="mt-4 h-2 bg-gray-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-full animate-pulse" style={{width: '65%'}}></div>
-                  </div>
                 </div>
 
-                {/* Total Volume */}
-                <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6 hover:transform hover:-translate-y-1 transition-all duration-300">
+                {/* Total User Balances */}
+                <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center">
                       <Wallet className="w-6 h-6 text-purple-400" />
                     </div>
-                    <div className="text-green-400 text-sm font-medium flex items-center">
-                      <TrendingUp className="w-4 h-4 mr-1" /> +23%
-                    </div>
                   </div>
-                  <h3 className="text-2xl font-bold mb-1">${users.reduce((sum, user) => sum + (user.balance || 0), 0).toLocaleString()}</h3>
-                  <p className="text-gray-400 text-sm">24h Volume</p>
-                  <div className="mt-4 h-2 bg-gray-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-purple-500 to-purple-400 rounded-full animate-pulse" style={{width: '89%'}}></div>
-                  </div>
+                  <h3 className="text-2xl font-bold mb-1">
+                    {stats
+                      ? `${Number(stats.totalBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })} GULU`
+                      : 'No data yet'}
+                  </h3>
+                  <p className="text-gray-400 text-sm">Total User Balances</p>
                 </div>
 
-                {/* Platform Health */}
-                <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6 hover:transform hover:-translate-y-1 transition-all duration-300">
+                {/* System Uptime */}
+                <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div className="w-12 h-12 bg-orange-500/20 rounded-xl flex items-center justify-center">
                       <Zap className="w-6 h-6 text-orange-400" />
                     </div>
-                    <div className="text-green-400 text-sm font-medium flex items-center">
-                      Healthy
-                    </div>
                   </div>
-                  <h3 className="text-2xl font-bold mb-1">99.9%</h3>
+                  <h3 className="text-2xl font-bold mb-1">
+                    {stats ? formatUptime(stats.systemUptime) : 'No data yet'}
+                  </h3>
                   <p className="text-gray-400 text-sm">System Uptime</p>
-                  <div className="mt-4 h-2 bg-gray-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-orange-500 to-orange-400 rounded-full animate-pulse" style={{width: '99%'}}></div>
-                  </div>
                 </div>
               </div>
 
@@ -412,7 +437,11 @@ function AdminDashboard() {
                   <Wallet className="w-5 h-5 mr-3" />
                   <span className="font-medium">Adjust Balance</span>
                 </button>
-                <button className="w-full p-6 bg-gradient-to-r from-green-600 to-green-500 rounded-xl hover:shadow-lg hover:shadow-green-500/25 transition-all duration-300 flex items-center justify-center">
+                <button
+                  disabled
+                  title="Coming soon"
+                  className="w-full p-6 bg-gradient-to-r from-green-600 to-green-500 rounded-xl opacity-50 cursor-not-allowed flex items-center justify-center"
+                >
                   <Megaphone className="w-5 h-5 mr-3" />
                   <span className="font-medium">Send Announcement</span>
                 </button>
@@ -434,7 +463,7 @@ function AdminDashboard() {
             </>
           )}
 
-          {activeTab === 'users' && (
+          {(activeTab === 'users' || activeTab === 'balance') && (
             <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6">
               <div className="mb-6">
                 <h2 className="text-2xl font-bold mb-2">User Management</h2>
@@ -462,7 +491,9 @@ function AdminDashboard() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-100">${user.balance?.toLocaleString() || '0'}</div>
+                          <div className="text-sm font-medium text-gray-100">
+                            {(Number(user.balance) || 0).toLocaleString(undefined, { maximumFractionDigits: 8 })} GULU
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -478,7 +509,7 @@ function AdminDashboard() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <button
-                            onClick={() => setSelectedUser(user)}
+                            onClick={() => openBalanceEditor(user)}
                             className="text-primary hover:text-purple-400 transition-colors"
                           >
                             Edit Balance
@@ -495,23 +526,30 @@ function AdminDashboard() {
           {activeTab === 'analytics' && (
             <div className="backdrop-filter backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-6">
               <h2 className="text-2xl font-bold mb-6">Platform Analytics</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-blue-500/10 border border-blue-500/20 p-6 rounded-lg">
-                  <h3 className="text-sm font-medium text-blue-400 mb-2">Total Users</h3>
-                  <p className="text-3xl font-bold text-blue-300">{users.length}</p>
+              {!stats ? (
+                <p className="text-gray-400 py-8 text-center">No data yet</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-blue-500/10 border border-blue-500/20 p-6 rounded-lg">
+                    <h3 className="text-sm font-medium text-blue-400 mb-2">Total Users</h3>
+                    <p className="text-3xl font-bold text-blue-300">{stats.totalUsers}</p>
+                  </div>
+                  <div className="bg-green-500/10 border border-green-500/20 p-6 rounded-lg">
+                    <h3 className="text-sm font-medium text-green-400 mb-2">Active Users</h3>
+                    <p className="text-3xl font-bold text-green-300">{stats.activeUsers}</p>
+                  </div>
+                  <div className="bg-purple-500/10 border border-purple-500/20 p-6 rounded-lg">
+                    <h3 className="text-sm font-medium text-purple-400 mb-2">Total User Balances</h3>
+                    <p className="text-3xl font-bold text-purple-300">
+                      {Number(stats.totalBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })} GULU
+                    </p>
+                  </div>
                 </div>
-                <div className="bg-green-500/10 border border-green-500/20 p-6 rounded-lg">
-                  <h3 className="text-sm font-medium text-green-400 mb-2">Active Users</h3>
-                  <p className="text-3xl font-bold text-green-300">{users.filter(u => u.isActive).length}</p>
-                </div>
-                <div className="bg-purple-500/10 border border-purple-500/20 p-6 rounded-lg">
-                  <h3 className="text-sm font-medium text-purple-400 mb-2">Total Balance</h3>
-                  <p className="text-3xl font-bold text-purple-300">${users.reduce((sum, user) => sum + (user.balance || 0), 0).toLocaleString()}</p>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
+          {activeTab === 'news' && <NewsManagement />}
           {activeTab === 'coins' && <CoinManagement />}
           {activeTab === 'p2p' && <AdminP2P />}
           {activeTab === 'bots' && <BotFormation />}
@@ -526,33 +564,84 @@ function AdminDashboard() {
             <h3 className="text-xl font-bold mb-4">
               Edit Balance for {[selectedUser.firstName, selectedUser.lastName].filter(Boolean).join(' ') || selectedUser.email}
             </h3>
-            <div className="mb-6">
-              <label className="block text-sm font-medium mb-2 text-gray-300">New Balance</label>
-              <input
-                type="number"
-                value={newBalance}
-                onChange={(e) => setNewBalance(e.target.value)}
-                placeholder={selectedUser.balance?.toString() || '0'}
-                className="w-full px-4 py-3 border border-gray-600 rounded-lg bg-gray-800/50 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
-              />
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => updateUserBalance(selectedUser._id, newBalance)}
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-primary to-purple-600 text-white rounded-lg hover:shadow-lg transition-all font-medium"
-              >
-                Update
-              </button>
-              <button
-                onClick={() => {
-                  setSelectedUser(null)
-                  setNewBalance('')
-                }}
-                className="flex-1 px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
-              >
-                Cancel
-              </button>
-            </div>
+
+            {!confirmingBalance ? (
+              <>
+                <div className="mb-6">
+                  <label className="block text-sm font-medium mb-2 text-gray-300">New Balance (GULU)</label>
+                  <input
+                    type="number"
+                    value={newBalance}
+                    onChange={(e) => {
+                      setNewBalance(e.target.value)
+                      setBalanceError('')
+                    }}
+                    placeholder={(Number(selectedUser.balance) || 0).toString()}
+                    className="w-full px-4 py-3 border border-gray-600 rounded-lg bg-gray-800/50 text-white focus:ring-2 focus:ring-primary focus:border-transparent"
+                  />
+                  <p className="text-xs text-gray-400 mt-2">
+                    Current: {(Number(selectedUser.balance) || 0).toLocaleString(undefined, { maximumFractionDigits: 8 })} GULU
+                  </p>
+                </div>
+                {balanceError && <p className="text-sm text-red-400 mb-4">{balanceError}</p>}
+                <div className="flex gap-3">
+                  <button
+                    onClick={requestBalanceUpdate}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-primary to-purple-600 text-white rounded-lg hover:shadow-lg transition-all font-medium"
+                  >
+                    Update
+                  </button>
+                  <button
+                    onClick={closeBalanceEditor}
+                    className="flex-1 px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-300 mb-3">Review the change before it is applied:</p>
+                <div className="rounded-xl bg-gray-800/60 p-4 mb-4 space-y-2 tabular-nums">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Current</span>
+                    <span>{(Number(selectedUser.balance) || 0).toLocaleString(undefined, { maximumFractionDigits: 8 })} GULU</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">New</span>
+                    <span className="font-semibold">{(Number(newBalance) || 0).toLocaleString(undefined, { maximumFractionDigits: 8 })} GULU</span>
+                  </div>
+                  <div className="flex justify-between text-sm border-t border-gray-700 pt-2">
+                    <span className="text-gray-400">Difference</span>
+                    <span className={`font-semibold ${
+                      (Number(newBalance) || 0) - (Number(selectedUser.balance) || 0) >= 0
+                        ? 'text-green-400'
+                        : 'text-red-400'
+                    }`}>
+                      {(Number(newBalance) || 0) - (Number(selectedUser.balance) || 0) >= 0 ? '+' : ''}
+                      {((Number(newBalance) || 0) - (Number(selectedUser.balance) || 0)).toLocaleString(undefined, { maximumFractionDigits: 8 })} GULU
+                    </span>
+                  </div>
+                </div>
+                {balanceError && <p className="text-sm text-red-400 mb-4">{balanceError}</p>}
+                <div className="flex gap-3">
+                  <button
+                    onClick={confirmBalanceUpdate}
+                    disabled={savingBalance}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-primary to-purple-600 text-white rounded-lg hover:shadow-lg transition-all font-medium disabled:opacity-50"
+                  >
+                    {savingBalance ? 'Updating…' : 'Confirm update'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmingBalance(false)}
+                    disabled={savingBalance}
+                    className="flex-1 px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors font-medium disabled:opacity-50"
+                  >
+                    Back
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

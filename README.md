@@ -53,7 +53,7 @@ The platform features two distinct roles with separate authentication routes:
 	•	Database: PostgreSQL
 	•	APIs: CoinGecko (crypto rates), RSS feeds (crypto news)
 	•	Auth: JWT with role-based separation (User vs Admin)
-	•	Deployment: Render / Vercel / Docker
+	•	Deployment: Railway (backend) + Cloudflare Pages (frontend) / Docker
 
 ⸻
 
@@ -84,10 +84,10 @@ MIT License – free to use and modify.
 ## Deployment
 
 Frontend: Cloudflare Pages (static build in dist, SPA fallback via public/_redirects)
-Backend: Render Web Service (Node, API + Socket.IO)
+Backend: Railway Web Service (Node, API + Socket.IO)
 Database: Neon Serverless Postgres
 
-### Render environment
+### Railway environment
 
 | Key | Value |
 | --- | --- |
@@ -97,20 +97,23 @@ Database: Neon Serverless Postgres
 | ALLOWED_ORIGINS | the Cloudflare Pages origin |
 | TRUST_PROXY | 1 |
 | ADMIN_EMAIL / ADMIN_PASSWORD | initial admin, seeded only when no admin exists |
-| PRICE_SOURCE | none |
+| RUN_JOBS | `true` by default; set `false` to disable the background price/book/P2P timers (run them on a single instance only) |
+| P2P_AUTO_RELEASE | `false` by default; set `true` to let bot merchants auto-release escrow after a buyer marks the order paid |
 
 Build: npm install && npx prisma generate && npx prisma migrate deploy && node server/scripts/seedAdmin.js
 Start: node server/index.js
 Health check: /api/health
 
-Keep the service awake with an external uptime monitor pointing at /api/health every 10 minutes, otherwise the free instance sleeps and the price and bot timers stop.
+Keep the service warm with an external uptime monitor pointing at /api/health every 10 minutes; if the instance sleeps, the price and bot timers stop.
 
 ### Cloudflare Pages environment
 
 | Key | Value |
 | --- | --- |
-| VITE_API_BASE | https://your-service.onrender.com |
-| VITE_WS_BASE | https://your-service.onrender.com |
+| VITE_API_BASE | https://your-service.up.railway.app |
+| VITE_WS_BASE | https://your-service.up.railway.app |
+
+A root-level `.env.example` covers these frontend variables; backend settings are documented in `server/.env.example`.
 
 Build: npm run build
 Output: dist

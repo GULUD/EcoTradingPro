@@ -20,11 +20,10 @@ function Trading() {
   const [openOrders, setOpenOrders] = useState([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
-  const assetRef = useRef(selectedAsset)
+  const requestIdRef = useRef(0)
+  const mountedRef = useRef(true)
 
   const assets = ['BTC', 'ETH', 'SOL', 'ADA', 'XRP', 'BNB', 'MATIC', 'DOT', 'LINK', 'UNI']
-
-  assetRef.current = selectedAsset
 
   const prices = { ...priceSnapshot, ...liveMarketData }
   const pair = `${selectedAsset}/GULU`
@@ -33,12 +32,25 @@ function Trading() {
   const held = Number(account.portfolio?.[selectedAsset] || 0)
 
   useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    // Requests carry the id of the pair they were issued for; anything older is dropped
+    const requestId = ++requestIdRef.current
+    const asset = selectedAsset
+    setOrderBook({ bids: [], asks: [] })
+    setRecentTrades([])
+
     // /api/auth/me has no portfolio, so holdings must come from the profile endpoint
     loadProfile()
     fetchMarketPrices()
     const poll = () => {
-      fetchOrderBook()
-      fetchRecentTrades()
+      fetchOrderBook(asset, requestId)
+      fetchRecentTrades(asset, requestId)
       fetchOpenOrders()
     }
     poll()
@@ -63,6 +75,7 @@ function Trading() {
   const loadProfile = async () => {
     try {
       const response = await axios.get('/api/users/profile')
+      if (!mountedRef.current) return
       setAccount({
         balance: Number(response.data?.balance) || 0,
         portfolio: response.data?.portfolio || {},
@@ -73,21 +86,28 @@ function Trading() {
   }
 
   const refresh = async () => {
-    await Promise.all([loadProfile(), fetchOrderBook(), fetchRecentTrades(), fetchOpenOrders()])
+    await Promise.all([
+      loadProfile(),
+      fetchOrderBook(selectedAsset, requestIdRef.current),
+      fetchRecentTrades(selectedAsset, requestIdRef.current),
+      fetchOpenOrders(),
+    ])
   }
 
   const fetchMarketPrices = async () => {
     try {
       const response = await axios.get('/api/market/prices')
+      if (!mountedRef.current) return
       setPriceSnapshot(response.data || {})
     } catch (error) {
       console.error('[trading] price fetch failed', error.message)
     }
   }
 
-  const fetchOrderBook = async () => {
+  const fetchOrderBook = async (asset, requestId) => {
     try {
-      const response = await axios.get(`/api/market/orderbook/${assetRef.current}`, { params: { depth: 14 } })
+      const response = await axios.get(`/api/market/orderbook/${asset}`, { params: { depth: 14 } })
+      if (!mountedRef.current || requestId !== requestIdRef.current) return
       setOrderBook({
         bids: response.data?.bids || [],
         asks: response.data?.asks || [],
@@ -97,9 +117,10 @@ function Trading() {
     }
   }
 
-  const fetchRecentTrades = async () => {
+  const fetchRecentTrades = async (asset, requestId) => {
     try {
-      const response = await axios.get(`/api/market/trades/${assetRef.current}`, { params: { limit: 30 } })
+      const response = await axios.get(`/api/market/trades/${asset}`, { params: { limit: 30 } })
+      if (!mountedRef.current || requestId !== requestIdRef.current) return
       setRecentTrades(response.data || [])
     } catch (error) {
       console.error('[trading] recent trades fetch failed', error.message)
@@ -109,6 +130,7 @@ function Trading() {
   const fetchOpenOrders = async () => {
     try {
       const response = await axios.get('/api/users/orders')
+      if (!mountedRef.current) return
       setOpenOrders(response.data || [])
     } catch (error) {
       console.error('[trading] open orders fetch failed', error.message)
@@ -197,9 +219,9 @@ function Trading() {
       const avg = filled > 0 ? notional / filled : 0
 
       if (data.order.status === 'open' || data.order.status === 'partial') {
-        setMessage(`Resting order: ${data.order.remaining} ${selectedAsset} @ $${data.order.price}`)
+        setMessage(`Resting order: ${data.order.remaining} ${selectedAsset} @ ${data.order.price} GULU`)
       } else if (filled > 0) {
-        setMessage(`Filled ${filled.toFixed(6)} ${selectedAsset} at $${avg.toFixed(2)}`)
+        setMessage(`Filled ${filled.toFixed(6)} ${selectedAsset} at ${avg.toFixed(2)} GULU`)
       } else {
         setMessage('Order canceled, no fill')
       }
@@ -330,21 +352,21 @@ function Trading() {
               </div>
               <div className="flex justify-between">
                 <span>Total</span>
-                <span>${total().toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                <span className="tabular-nums">{total().toLocaleString(undefined, { maximumFractionDigits: 2 })} GULU</span>
               </div>
               <div className="flex justify-between">
                 <span>Fee ({FEE_RATE * 100}%)</span>
                 <span>
                   {tradeType === 'buy'
                     ? `${(quantity() * FEE_RATE).toFixed(6)} ${selectedAsset}`
-                    : `$${(total() * FEE_RATE).toFixed(2)}`}
+                    : `${(total() * FEE_RATE).toFixed(2)} GULU`}
                 </span>
               </div>
               <div className="flex justify-between text-gray-500">
                 <span>Available</span>
                 <span>
                   {tradeType === 'buy'
-                    ? `$${balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                    ? `${balance.toLocaleString(undefined, { maximumFractionDigits: 2 })} GULU`
                     : `${held.toFixed(6)} ${selectedAsset}`}
                 </span>
               </div>
@@ -382,7 +404,7 @@ function Trading() {
               <div>
                 <p className="text-sm text-gray-500">Last Price</p>
                 <p className="text-2xl font-bold">
-                  ${lastPrice ? lastPrice.toLocaleString() : '0'}
+                  {lastPrice ? `${lastPrice.toLocaleString()} GULU` : '0 GULU'}
                 </p>
               </div>
               <div>
@@ -395,7 +417,7 @@ function Trading() {
               <div>
                 <p className="text-sm text-gray-500">24h Volume</p>
                 <p className="text-2xl font-bold">
-                  ${Number(prices[pair]?.volume || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  {Number(prices[pair]?.volume || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} {selectedAsset}
                 </p>
               </div>
             </div>
@@ -413,7 +435,7 @@ function Trading() {
                       onClick={() => setPriceFromBook(ask.price, 'ask')}
                       className="flex justify-between text-xs cursor-pointer hover:bg-red-50 dark:hover:bg-red-900/10 p-1 rounded"
                     >
-                      <span className="text-red-500">${ask.price.toFixed(2)}</span>
+                      <span className="text-red-500">{ask.price.toFixed(2)}</span>
                       <span>{ask.size.toFixed(4)}</span>
                     </div>
                   ))}
@@ -427,7 +449,7 @@ function Trading() {
                 <div className="text-center">
                   <p className="text-sm text-gray-500">Spread</p>
                   <p className="font-semibold tabular-nums">
-                    ${((orderBook.asks[0]?.price || 0) - (orderBook.bids[0]?.price || 0)).toFixed(2)}
+                    {((orderBook.asks[0]?.price || 0) - (orderBook.bids[0]?.price || 0)).toFixed(2)} GULU
                   </p>
                 </div>
               </div>
@@ -441,7 +463,7 @@ function Trading() {
                       onClick={() => setPriceFromBook(bid.price, 'bid')}
                       className="flex justify-between text-xs cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-900/10 p-1 rounded"
                     >
-                      <span className="text-emerald-500">${bid.price.toFixed(2)}</span>
+                      <span className="text-emerald-500">{bid.price.toFixed(2)}</span>
                       <span>{bid.size.toFixed(4)}</span>
                     </div>
                   ))}
@@ -462,7 +484,7 @@ function Trading() {
               {recentTrades.map((trade) => (
                 <div key={trade.id} className="flex justify-between items-center text-sm">
                   <span className={trade.side === 'buy' ? 'text-emerald-500' : 'text-red-500'}>
-                    ${trade.price.toFixed(2)}
+                    {trade.price.toFixed(2)} GULU
                   </span>
                   <span>{trade.size.toFixed(4)}</span>
                   <span className="text-gray-500">
@@ -503,7 +525,7 @@ function Trading() {
                       </button>
                     </div>
                     <div className="text-sm text-gray-600 dark:text-gray-400 tabular-nums">
-                      <div>{order.remaining} @ ${order.price}</div>
+                      <div>{order.remaining} @ {order.price} GULU</div>
                       <div>
                         {order.type} order
                         {order.filled > 0 ? `, filled ${order.filled}` : ''}

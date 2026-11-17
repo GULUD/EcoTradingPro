@@ -51,7 +51,8 @@ const io = socketIo(server, {
   },
 })
 
-app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1)
+// Never trust X-Forwarded-For unless a proxy is actually configured in front of this process
+app.set('trust proxy', process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) : false)
 app.set('io', io)
 app.use(
   helmet({

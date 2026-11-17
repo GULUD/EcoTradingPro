@@ -80,11 +80,11 @@ function UserDashboard() {
           <div className="p-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 flex items-center justify-center text-white font-bold">
-                C
+                E
               </div>
               {!sidebarCollapsed && (
                 <div className="text-xl font-extrabold">
-                  <span className="text-brand-500">CRYPTO</span> TRADE <span className="text-emerald-500">PRO</span>
+                  <span className="text-brand-500">Eco</span>Trading<span className="text-emerald-500">Pro</span>
                 </div>
               )}
             </div>
@@ -205,7 +205,7 @@ function UserDashboard() {
                   </div>
                   <div className="hidden md:block">
                     <div className="font-semibold">{user?.firstName} {user?.lastName}</div>
-                    <div className="text-sm text-gray-500">Pro Trader</div>
+                    <div className="text-sm text-gray-500">Trader</div>
                   </div>
                   <button
                     onClick={handleLogout}
@@ -276,9 +276,11 @@ function DashboardHome({
   const { user } = useAuth()
   const { theme } = useTheme()
   const { notifications } = useWebSocket()
+  const navigate = useNavigate()
   const [profile, setProfile] = useState({ balance: 0, portfolio: {} })
   const [marketData, setMarketData] = useState({})
   const [openOrders, setOpenOrders] = useState([])
+  const [costBasis, setCostBasis] = useState({})
   const [activeView, setActiveView] = useState('analytics') // State for the tab selection within dashboard home content
   const chartInstance = useRef(null)
 
@@ -323,12 +325,14 @@ function DashboardHome({
       if (!token) return
       try {
         const headers = { Authorization: `Bearer ${token}` }
-        const [profileResponse, ordersResponse] = await Promise.all([
+        const [profileResponse, ordersResponse, tradesResponse] = await Promise.all([
           fetch(`${API_BASE}/api/users/profile`, { headers }),
           fetch(`${API_BASE}/api/users/orders`, { headers }),
+          fetch(`${API_BASE}/api/users/trades`, { headers }),
         ])
         const profilePayload = profileResponse.ok ? await profileResponse.json() : null
         const ordersPayload = ordersResponse.ok ? await ordersResponse.json() : null
+        const tradesPayload = tradesResponse.ok ? await tradesResponse.json() : null
         if (cancelled) return
 
         if (profilePayload) {
@@ -338,6 +342,26 @@ function DashboardHome({
           })
         }
         if (Array.isArray(ordersPayload)) setOpenOrders(ordersPayload)
+
+        // Weighted average buy price per asset, used when a live quote is missing
+        if (Array.isArray(tradesPayload)) {
+          const totals = {}
+          for (const trade of tradesPayload) {
+            if (trade.side !== 'buy') continue
+            const asset = trade.asset || trade.symbol
+            const size = Number(trade.size)
+            const price = Number(trade.price)
+            if (!asset || !Number.isFinite(size) || !Number.isFinite(price)) continue
+            if (!totals[asset]) totals[asset] = { quantity: 0, cost: 0 }
+            totals[asset].quantity += size
+            totals[asset].cost += size * price
+          }
+          const basis = {}
+          Object.entries(totals).forEach(([asset, total]) => {
+            if (total.quantity > 0) basis[asset] = total.cost / total.quantity
+          })
+          setCostBasis(basis)
+        }
       } catch (error) {
         console.error('[dashboard] account fetch failed', error.message)
       }
@@ -388,7 +412,7 @@ function DashboardHome({
             ticks: {
               color: '#94a3b8',
               callback: function(value) {
-                return '$' + value.toLocaleString()
+                return value.toLocaleString()
               }
             }
           },
@@ -432,11 +456,21 @@ function DashboardHome({
 
   let holdingsValue = 0
   let dailyChange = 0
+  const unpricedAssets = []
   Object.entries(profile.portfolio || {}).forEach(([asset, rawQuantity]) => {
     const quantity = Number(rawQuantity)
+    if (!Number.isFinite(quantity) || quantity <= 0) return
     const quote = marketData[`${asset}/GULU`]
     const price = Number(quote?.price)
-    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price)) return
+
+    // A missing quote must not silently drop the position; fall back to the average cost
+    if (!Number.isFinite(price) || price <= 0) {
+      unpricedAssets.push(asset)
+      const cost = Number(costBasis[asset])
+      if (Number.isFinite(cost) && cost > 0) holdingsValue += quantity * cost
+      return
+    }
+
     const value = quantity * price
     const change = Number(quote?.change) || 0
     holdingsValue += value
@@ -574,6 +608,11 @@ function DashboardHome({
       </div>
 
       {/* Render content based on activeView */}
+      {unpricedAssets.length > 0 && (
+        <div className="mb-6 p-3 rounded-xl text-sm bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300">
+          部分资产暂无法估值（{unpricedAssets.join('、')}），已按成本价计入总资产。
+        </div>
+      )}
       {activeView === 'analytics' && (
         <>
           {/* Stats Grid */}
@@ -588,11 +627,11 @@ function DashboardHome({
                 </div>
               </div>
               <div className="text-3xl font-bold mb-2">
-                ${totalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                {totalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} GULU
               </div>
               <div className={`text-sm font-medium ${dailyChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                 <i className={`fas ${dailyChange >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'} mr-1`}></i>
-                {dailyChange >= 0 ? '+' : '-'}${Math.abs(dailyChange).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                {dailyChange >= 0 ? '+' : '-'}{Math.abs(dailyChange).toLocaleString(undefined, { maximumFractionDigits: 2 })} GULU
                 {' '}({dailyChangePercent >= 0 ? '+' : ''}{dailyChangePercent.toFixed(2)}%)
               </div>
             </div>
@@ -607,7 +646,7 @@ function DashboardHome({
                 </div>
               </div>
               <div className="text-3xl font-bold mb-2">
-                ${(Number(profile.balance) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                {(Number(profile.balance) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} GULU
               </div>
               <div className="text-gray-500 text-sm">Account Balance</div>
             </div>
@@ -622,7 +661,7 @@ function DashboardHome({
                 </div>
               </div>
               <div className={`text-3xl font-bold mb-2 ${dailyChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                {dailyChange >= 0 ? '+' : '-'}${Math.abs(dailyChange).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                {dailyChange >= 0 ? '+' : '-'}{Math.abs(dailyChange).toLocaleString(undefined, { maximumFractionDigits: 2 })} GULU
               </div>
               <div className={`text-sm font-medium ${dailyChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                 <i className={`fas ${dailyChange >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'} mr-1`}></i>
@@ -708,7 +747,7 @@ function DashboardHome({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Amount (USD)</label>
+                  <label className="block text-sm font-medium mb-2">Amount (GULU)</label>
                   <input
                     type="number"
                     value={tradeForm.amount}
@@ -720,7 +759,7 @@ function DashboardHome({
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2">Price (USD)</label>
+                    <label className="block text-sm font-medium mb-2">Price (GULU)</label>
                     <input
                       type="text"
                       value={tradePrice ? tradePrice.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'}
@@ -753,6 +792,7 @@ function DashboardHome({
                 </div>
 
                 <button
+                  onClick={() => navigate('/dashboard/trading')}
                   className={`w-full py-3 rounded-xl font-semibold transition ${
                     activeTab === 'buy'
                       ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
@@ -792,7 +832,7 @@ function DashboardHome({
                       </div>
                       <div className="text-right">
                         <div className="font-semibold">
-                          ${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          {price.toLocaleString(undefined, { maximumFractionDigits: 2 })} GULU
                         </div>
                         <div className={`text-sm ${change >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                           {change >= 0 ? '+' : ''}{change.toFixed(2)}%
@@ -830,7 +870,7 @@ function DashboardHome({
                       <div className="text-sm text-gray-500">{order.type} order</div>
                     </div>
                     <div className="font-semibold text-right">
-                      {Number(order.remaining) || 0} @ ${Number(order.price) || 0}
+                      {Number(order.remaining) || 0} @ {Number(order.price) || 0} GULU
                     </div>
                   </div>
                 ))}

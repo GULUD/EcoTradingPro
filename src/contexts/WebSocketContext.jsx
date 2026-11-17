@@ -19,6 +19,8 @@ export const WebSocketProvider = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false)
   const [marketData, setMarketData] = useState({})
   const [notifications, setNotifications] = useState([])
+  const [connectionError, setConnectionError] = useState('')
+  const socketRef = useRef(null)
 
   // Refs keep the socket handlers current without making the effect depend on their values
   const tokenRef = useRef(localStorage.getItem('token') || '')
@@ -52,14 +54,30 @@ export const WebSocketProvider = ({ children }) => {
     })
 
     newSocket.on('connect', () => {
-      console.log('[ws] connected')
       setIsConnected(true)
+      setConnectionError('')
       newSocket.emit('join', 'market')
     })
 
     newSocket.on('disconnect', () => {
-      console.log('[ws] disconnected')
       setIsConnected(false)
+      setConnectionError('Live connection lost, retrying…')
+    })
+
+    newSocket.on('connect_error', (error) => {
+      setIsConnected(false)
+      setConnectionError(error?.message || 'Unable to reach the live market feed')
+    })
+
+    newSocket.on('reconnect_failed', () => {
+      setIsConnected(false)
+      setConnectionError('Live updates stopped after several retries')
+    })
+
+    // In socket.io v4 the exhausted-retries event lives on the manager
+    newSocket.io.on('reconnect_failed', () => {
+      setIsConnected(false)
+      setConnectionError('Live updates stopped after several retries')
     })
 
     newSocket.on('price:update', (payload) => {
@@ -75,7 +93,7 @@ export const WebSocketProvider = ({ children }) => {
     newSocket.on('trade:executed', (trade) => {
       setNotifications((prev) => [
         {
-          id: `trade-${trade.time}-${Math.random()}`,
+          id: `trade-${trade.time}-${trade.symbol}-${trade.price}`,
           title: 'Trade executed',
           message: `${trade.side} ${trade.size} ${trade.symbol} @ ${trade.price}`,
         },
@@ -95,6 +113,7 @@ export const WebSocketProvider = ({ children }) => {
     newSocket.on('p2p:order', refreshProfile)
 
     setSocket(newSocket)
+    socketRef.current = newSocket
 
     // Render free tier sleeps: fall back to polling while the socket is down
     const timer = setInterval(() => {
@@ -117,6 +136,7 @@ export const WebSocketProvider = ({ children }) => {
 
     return () => {
       clearInterval(timer)
+      socketRef.current = null
       newSocket.close()
     }
     // Reconnecting on every balance update (new user object) dropped pushes, so only the id matters
@@ -139,9 +159,19 @@ export const WebSocketProvider = ({ children }) => {
   const clearNotifications = () => setNotifications([])
   const removeNotification = (id) => setNotifications((prev) => prev.filter((n) => n.id !== id))
 
+  const reconnect = () => {
+    setConnectionError('')
+    const current = socketRef.current
+    if (!current) return
+    if (current.connected) current.emit('join', 'market')
+    else current.connect()
+  }
+
   const value = {
     socket,
     isConnected,
+    connectionError,
+    reconnect,
     marketData,
     notifications,
     joinMarketData,
@@ -150,5 +180,21 @@ export const WebSocketProvider = ({ children }) => {
     removeNotification,
   }
 
-  return <WebSocketContext.Provider value={value}>{children}</WebSocketContext.Provider>
+  return (
+    <WebSocketContext.Provider value={value}>
+      {children}
+      {connectionError && (
+        <div className="fixed bottom-4 right-4 z-[60] max-w-xs rounded-xl border border-amber-500/40 bg-amber-50 dark:bg-amber-900/30 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 shadow-lg">
+          <p className="font-semibold">Live data unavailable</p>
+          <p className="mt-1 text-xs opacity-90">{connectionError}</p>
+          <button
+            onClick={reconnect}
+            className="mt-2 px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold"
+          >
+            Reconnect
+          </button>
+        </div>
+      )}
+    </WebSocketContext.Provider>
+  )
 }

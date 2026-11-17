@@ -64,7 +64,7 @@ function UserRegister() {
                 <path d="M16 34c8-6 14-14 16-24 2 10 8 18 16 24-8 6-14 14-16 24-2-10-8-18-16-24z" fill="#10B981"/>
               </svg>
               <span className="text-xl font-extrabold">
-                <span className="text-brand-500">CRYPTO</span> TRADE <span className="text-emerald-500">PRO</span>
+                <span className="text-brand-500">Eco</span>Trading<span className="text-emerald-500">Pro</span>
               </span>
             </Link>
             <h1 className="mt-4 text-2xl font-extrabold">Create Account</h1>

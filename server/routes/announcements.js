@@ -1,15 +1,19 @@
 const express = require('express')
 const prisma = require('../db')
-const { authenticateToken, requireAdmin } = require('../middleware/auth')
+const { authenticateToken, requireAdmin, optionalUser } = require('../middleware/auth')
 
 const router = express.Router()
 
-router.get('/', async (req, res, next) => {
+router.get('/', optionalUser, async (req, res, next) => {
   try {
     const now = new Date()
+    // Targeted announcements must stay private; anonymous callers only see the public ones
+    const targets = ['all']
+    if (req.user) targets.push(req.user.id, req.user.email)
     const rows = await prisma.announcement.findMany({
       where: {
         active: true,
+        targetUsers: { in: targets },
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       orderBy: { createdAt: 'desc' },

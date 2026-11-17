@@ -1,106 +1,133 @@
-
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Line, Bar } from 'react-chartjs-2'
+import axios from '../../utils/axios'
+
+const EMPTY = 'No data yet'
+
+const fmtGulu = (value, digits = 2) => {
+  const number = Number(value)
+  return Number.isFinite(number)
+    ? `${number.toLocaleString(undefined, { maximumFractionDigits: digits })} GULU`
+    : EMPTY
+}
+
+const fmtPercent = (value, digits = 2) => {
+  const number = Number(value)
+  return Number.isFinite(number) ? `${number >= 0 ? '+' : ''}${number.toFixed(digits)}%` : EMPTY
+}
+
+const RANGE_DAYS = { '7d': 7, '30d': 30, '90d': 90 }
 
 const PerformanceAnalytics = () => {
   const [activeTab, setActiveTab] = useState('performance')
   const [timeRange, setTimeRange] = useState('30d')
-  const [loading, setLoading] = useState(false)
+  const [performance, setPerformance] = useState(null)
+  const [portfolioValue, setPortfolioValue] = useState(null)
+  const [trades, setTrades] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  const [performanceData, setPerformanceData] = useState({
-    totalReturn: 15.8,
-    annualizedReturn: 23.4,
-    volatility: 18.2,
-    sharpeRatio: 1.28,
-    maxDrawdown: -12.5,
-    winRate: 68.5,
-    avgWin: 4.2,
-    avgLoss: -2.8,
-    profitFactor: 2.1
+  useEffect(() => {
+    let cancelled = false
+    const days = RANGE_DAYS[timeRange] || 30
+
+    setLoading(true)
+    Promise.allSettled([
+      axios.get('/api/portfolio/performance', { params: { timeRange: days } }),
+      axios.get('/api/portfolio/value'),
+      axios.get('/api/users/trades'),
+    ]).then(([performanceRes, valueRes, tradesRes]) => {
+      if (cancelled) return
+      setPerformance(performanceRes.status === 'fulfilled' ? performanceRes.value.data : null)
+      setPortfolioValue(valueRes.status === 'fulfilled' ? valueRes.value.data : null)
+      setTrades(
+        tradesRes.status === 'fulfilled' && Array.isArray(tradesRes.value.data)
+          ? tradesRes.value.data
+          : []
+      )
+      setLoading(false)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [timeRange])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div>
+      </div>
+    )
+  }
+
+  const pnlTrades = trades.filter((trade) => Number.isFinite(Number(trade.pnl)))
+  const totalTrades = Number(performance?.totalTrades) || 0
+  const hasTrades = totalTrades > 0
+
+  const sortedTrades = [...pnlTrades].sort((a, b) => Number(a.time) - Number(b.time))
+  let runningPnl = 0
+  const cumulativeSeries = sortedTrades.map((trade) => {
+    runningPnl += Number(trade.pnl)
+    return { time: Number(trade.time), value: runningPnl }
   })
 
-  const generatePerformanceChart = () => {
-    const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90
-    const labels = Array.from({ length: days }, (_, i) => {
-      const date = new Date()
-      date.setDate(date.getDate() - (days - 1 - i))
-      return date.toLocaleDateString()
-    })
-
-    let portfolioValue = 10000
-    const data = labels.map(() => {
-      const change = (Math.random() - 0.48) * 200 // Slight upward bias
-      portfolioValue += change
-      return portfolioValue
-    })
-
-    return {
-      labels,
-      datasets: [
-        {
-          label: 'Portfolio Value',
-          data,
-          borderColor: '#6366f1',
-          backgroundColor: 'rgba(99, 102, 241, 0.1)',
-          borderWidth: 2,
-          fill: true,
-          tension: 0.4
-        },
-        {
-          label: 'S&P 500 Benchmark',
-          data: labels.map(() => 10000 + (Math.random() - 0.5) * 100),
-          borderColor: '#ef4444',
-          backgroundColor: 'transparent',
-          borderWidth: 1,
-          borderDash: [5, 5]
-        }
-      ]
-    }
+  const performanceChart = {
+    labels: cumulativeSeries.map((point) => new Date(point.time).toLocaleDateString()),
+    datasets: [
+      {
+        label: 'Cumulative Realized P&L (GULU)',
+        data: cumulativeSeries.map((point) => point.value),
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4,
+      },
+    ],
   }
 
-  const generateReturnsDistribution = () => {
-    const returns = Array.from({ length: 50 }, () => (Math.random() - 0.5) * 10)
-    const bins = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5]
-    const histogram = bins.map(bin => {
-      return returns.filter(r => r >= bin && r < bin + 1).length
+  const bins = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5]
+  const returns = pnlTrades
+    .map((trade) => {
+      const notional = Number(trade.size) * Number(trade.price)
+      return notional > 0 ? (Number(trade.pnl) / notional) * 100 : null
     })
-
-    return {
-      labels: bins.map(b => `${b}%`),
-      datasets: [{
-        label: 'Frequency',
-        data: histogram,
+    .filter((value) => value !== null)
+  const returnsDistribution = {
+    labels: bins.map((bin) => `${bin}%`),
+    datasets: [
+      {
+        label: 'Trades',
+        data: bins.map((bin) => returns.filter((r) => r >= bin && r < bin + 1).length),
         backgroundColor: 'rgba(16, 185, 129, 0.6)',
         borderColor: '#10b981',
-        borderWidth: 1
-      }]
-    }
+        borderWidth: 1,
+      },
+    ],
   }
 
-  const calculateTradeMetrics = () => {
-    return [
-      { metric: 'Total Trades', value: 156, change: '+12' },
-      { metric: 'Winning Trades', value: 107, change: '+8' },
-      { metric: 'Losing Trades', value: 49, change: '+4' },
-      { metric: 'Average Hold Time', value: '2.3 days', change: '-0.2' },
-      { metric: 'Best Trade', value: '+$850', change: null },
-      { metric: 'Worst Trade', value: '-$320', change: null }
-    ]
-  }
+  const tradeMetrics = [
+    { metric: 'Total Trades', value: hasTrades ? totalTrades : EMPTY },
+    { metric: 'Winning Trades', value: hasTrades ? performance.winningTrades : EMPTY },
+    { metric: 'Losing Trades', value: hasTrades ? performance.losingTrades : EMPTY },
+    { metric: 'Win Rate', value: hasTrades ? `${Number(performance.winRate).toFixed(1)}%` : EMPTY },
+    { metric: 'Total P&L', value: performance ? fmtGulu(performance.totalPnL) : EMPTY },
+    { metric: 'Portfolio Value', value: fmtGulu(portfolioValue?.totalValue) },
+  ]
 
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: {
-        position: 'top'
-      }
+        position: 'top',
+      },
     },
     scales: {
       y: {
-        beginAtZero: false
-      }
-    }
+        beginAtZero: false,
+      },
+    },
   }
 
   return (
@@ -112,7 +139,7 @@ const PerformanceAnalytics = () => {
             <h2 className="text-2xl font-bold">Performance Analytics</h2>
             <p className="text-gray-600 dark:text-gray-300">Deep dive into your trading performance</p>
           </div>
-          
+
           <div className="flex gap-2">
             <select
               value={timeRange}
@@ -123,7 +150,12 @@ const PerformanceAnalytics = () => {
               <option value="30d">Last 30 Days</option>
               <option value="90d">Last 90 Days</option>
             </select>
-            <button className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition">
+            <button
+              type="button"
+              disabled
+              title="Coming soon"
+              className="px-4 py-2 bg-brand-500 text-white rounded-lg opacity-50 cursor-not-allowed"
+            >
               Export Report
             </button>
           </div>
@@ -135,40 +167,58 @@ const PerformanceAnalytics = () => {
         <div className="glass rounded-2xl p-4">
           <div className="text-center">
             <p className="text-gray-500 text-sm">Total Return</p>
-            <p className="text-2xl font-bold text-green-500">+{performanceData.totalReturn}%</p>
+            <p className={`text-2xl font-bold ${
+              Number(performance?.totalReturn) >= 0 ? 'text-green-500' : 'text-red-500'
+            }`}>
+              {performance ? fmtPercent(performance.totalReturn) : EMPTY}
+            </p>
             <p className="text-xs text-gray-400">{timeRange}</p>
           </div>
         </div>
-        
+
         <div className="glass rounded-2xl p-4">
           <div className="text-center">
             <p className="text-gray-500 text-sm">Sharpe Ratio</p>
-            <p className="text-2xl font-bold">{performanceData.sharpeRatio}</p>
-            <p className="text-xs text-green-400">Excellent</p>
+            <p className="text-2xl font-bold">
+              {performance && Number(performance.sharpeRatio) !== 0
+                ? Number(performance.sharpeRatio).toFixed(2)
+                : EMPTY}
+            </p>
+            <p className="text-xs text-gray-400">Risk-adjusted</p>
           </div>
         </div>
-        
+
         <div className="glass rounded-2xl p-4">
           <div className="text-center">
             <p className="text-gray-500 text-sm">Max Drawdown</p>
-            <p className="text-2xl font-bold text-red-500">{performanceData.maxDrawdown}%</p>
+            <p className="text-2xl font-bold text-red-500">
+              {performance && Number(performance.maxDrawdown) !== 0
+                ? fmtPercent(performance.maxDrawdown)
+                : EMPTY}
+            </p>
             <p className="text-xs text-gray-400">Peak to trough</p>
           </div>
         </div>
-        
+
         <div className="glass rounded-2xl p-4">
           <div className="text-center">
             <p className="text-gray-500 text-sm">Win Rate</p>
-            <p className="text-2xl font-bold">{performanceData.winRate}%</p>
-            <p className="text-xs text-green-400">Above average</p>
+            <p className="text-2xl font-bold">
+              {hasTrades ? `${Number(performance.winRate).toFixed(1)}%` : EMPTY}
+            </p>
+            <p className="text-xs text-gray-400">Closed sells</p>
           </div>
         </div>
-        
+
         <div className="glass rounded-2xl p-4">
           <div className="text-center">
             <p className="text-gray-500 text-sm">Profit Factor</p>
-            <p className="text-2xl font-bold">{performanceData.profitFactor}</p>
-            <p className="text-xs text-green-400">Very good</p>
+            <p className="text-2xl font-bold">
+              {performance && Number(performance.profitFactor) !== 0
+                ? Number(performance.profitFactor).toFixed(2)
+                : EMPTY}
+            </p>
+            <p className="text-xs text-gray-400">Gross win / loss</p>
           </div>
         </div>
       </div>
@@ -180,7 +230,6 @@ const PerformanceAnalytics = () => {
             { id: 'performance', name: 'Performance Chart' },
             { id: 'returns', name: 'Returns Analysis' },
             { id: 'trades', name: 'Trade Metrics' },
-            { id: 'benchmark', name: 'Benchmark Comparison' }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -200,26 +249,20 @@ const PerformanceAnalytics = () => {
       {/* Tab Content */}
       {activeTab === 'performance' && (
         <div className="glass rounded-2xl p-6">
-          <h3 className="text-xl font-bold mb-4">Portfolio Performance vs Benchmark</h3>
-          <div className="h-96">
-            <Line data={generatePerformanceChart()} options={chartOptions} />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-            <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20">
-              <h4 className="font-semibold text-green-700 dark:text-green-400">Portfolio Performance</h4>
-              <p className="text-2xl font-bold text-green-600">+15.8%</p>
-              <p className="text-sm text-gray-500">Outperforming market</p>
+          <h3 className="text-xl font-bold mb-4">Cumulative Realized P&amp;L</h3>
+          {cumulativeSeries.length === 0 ? (
+            <div className="h-96 flex items-center justify-center text-gray-500">{EMPTY}</div>
+          ) : (
+            <div className="h-96">
+              <Line data={performanceChart} options={chartOptions} />
             </div>
-            <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-900/20">
-              <h4 className="font-semibold text-blue-700 dark:text-blue-400">Market Benchmark</h4>
-              <p className="text-2xl font-bold text-blue-600">+8.2%</p>
-              <p className="text-sm text-gray-500">S&P 500 equivalent</p>
-            </div>
-            <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20">
-              <h4 className="font-semibold text-yellow-700 dark:text-yellow-400">Alpha Generated</h4>
-              <p className="text-2xl font-bold text-yellow-600">+7.6%</p>
-              <p className="text-sm text-gray-500">Excess return</p>
-            </div>
+          )}
+          <div className="mt-6 p-4 rounded-lg bg-gray-50 dark:bg-white/5">
+            <h4 className="font-semibold mb-2">Current Portfolio</h4>
+            <p className="text-2xl font-bold">{fmtGulu(portfolioValue?.totalValue)}</p>
+            <p className="text-sm text-gray-500">
+              Cash balance {fmtGulu(portfolioValue?.cashBalance)}
+            </p>
           </div>
         </div>
       )}
@@ -228,33 +271,49 @@ const PerformanceAnalytics = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="glass rounded-2xl p-6">
             <h3 className="text-xl font-bold mb-4">Returns Distribution</h3>
-            <div className="h-64">
-              <Bar data={generateReturnsDistribution()} options={chartOptions} />
-            </div>
+            {returns.length === 0 ? (
+              <div className="h-64 flex items-center justify-center text-gray-500">{EMPTY}</div>
+            ) : (
+              <div className="h-64">
+                <Bar data={returnsDistribution} options={chartOptions} />
+              </div>
+            )}
           </div>
-          
+
           <div className="glass rounded-2xl p-6">
-            <h3 className="text-xl font-bold mb-4">Risk-Adjusted Metrics</h3>
+            <h3 className="text-xl font-bold mb-4">Trade Breakdown</h3>
             <div className="space-y-4">
               <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-white/5">
-                <span>Annualized Return</span>
-                <span className="font-semibold text-green-500">+23.4%</span>
+                <span>Realized P&amp;L</span>
+                <span className={`font-semibold ${
+                  Number(performance?.totalPnL) >= 0 ? 'text-green-500' : 'text-red-500'
+                }`}>
+                  {performance ? fmtGulu(performance.totalPnL) : EMPTY}
+                </span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-white/5">
-                <span>Annualized Volatility</span>
-                <span className="font-semibold">18.2%</span>
+                <span>Winning Trades</span>
+                <span className="font-semibold">
+                  {hasTrades ? performance.winningTrades : EMPTY}
+                </span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-white/5">
-                <span>Sortino Ratio</span>
-                <span className="font-semibold">1.67</span>
+                <span>Losing Trades</span>
+                <span className="font-semibold">
+                  {hasTrades ? performance.losingTrades : EMPTY}
+                </span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-white/5">
-                <span>Calmar Ratio</span>
-                <span className="font-semibold">1.87</span>
+                <span>Average Win</span>
+                <span className="font-semibold">
+                  {performance && Number(performance.avgWin) !== 0 ? fmtGulu(performance.avgWin) : EMPTY}
+                </span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-white/5">
-                <span>Information Ratio</span>
-                <span className="font-semibold">0.92</span>
+                <span>Average Loss</span>
+                <span className="font-semibold">
+                  {performance && Number(performance.avgLoss) !== 0 ? fmtGulu(performance.avgLoss) : EMPTY}
+                </span>
               </div>
             </div>
           </div>
@@ -265,126 +324,12 @@ const PerformanceAnalytics = () => {
         <div className="glass rounded-2xl p-6">
           <h3 className="text-xl font-bold mb-4">Trading Statistics</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {calculateTradeMetrics().map((metric, index) => (
-              <div key={index} className="p-4 rounded-lg bg-gray-50 dark:bg-white/5">
+            {tradeMetrics.map((metric) => (
+              <div key={metric.metric} className="p-4 rounded-lg bg-gray-50 dark:bg-white/5">
                 <p className="text-sm text-gray-500 mb-1">{metric.metric}</p>
                 <p className="text-lg font-bold">{metric.value}</p>
-                {metric.change && (
-                  <p className={`text-xs ${metric.change.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>
-                    {metric.change} this period
-                  </p>
-                )}
               </div>
             ))}
-          </div>
-          
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20">
-              <h4 className="font-semibold text-green-700 dark:text-green-400 mb-2">Best Performing Assets</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>SOL/GULU</span>
-                  <span className="font-semibold">+24.8%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>ETH/GULU</span>
-                  <span className="font-semibold">+18.3%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>BTC/GULU</span>
-                  <span className="font-semibold">+12.1%</span>
-                </div>
-              </div>
-            </div>
-            
-            <div className="p-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20">
-              <h4 className="font-semibold text-yellow-700 dark:text-yellow-400 mb-2">Most Active Trading Hours</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>9:00 - 11:00 AM</span>
-                  <span className="font-semibold">32% of trades</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>2:00 - 4:00 PM</span>
-                  <span className="font-semibold">28% of trades</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>7:00 - 9:00 PM</span>
-                  <span className="font-semibold">22% of trades</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'benchmark' && (
-        <div className="glass rounded-2xl p-6">
-          <h3 className="text-xl font-bold mb-4">Benchmark Analysis</h3>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-              <h4 className="font-semibold mb-3">Performance Comparison</h4>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-white/5">
-                  <div>
-                    <div className="font-semibold">Your Portfolio</div>
-                    <div className="text-sm text-gray-500">Last 30 days</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-green-500">+15.8%</div>
-                    <div className="text-sm text-gray-500">$11,580</div>
-                  </div>
-                </div>
-                
-                <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-white/5">
-                  <div>
-                    <div className="font-semibold">Bitcoin</div>
-                    <div className="text-sm text-gray-500">Same period</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-green-500">+12.3%</div>
-                    <div className="text-sm text-gray-500">Outperformed</div>
-                  </div>
-                </div>
-                
-                <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-white/5">
-                  <div>
-                    <div className="font-semibold">S&P 500</div>
-                    <div className="text-sm text-gray-500">Traditional market</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-green-500">+8.2%</div>
-                    <div className="text-sm text-gray-500">Outperformed</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div>
-              <h4 className="font-semibold mb-3">Risk-Adjusted Performance</h4>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span>Beta (vs Bitcoin)</span>
-                  <span className="font-semibold">0.87</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Correlation to Market</span>
-                  <span className="font-semibold">0.72</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Tracking Error</span>
-                  <span className="font-semibold">8.4%</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Up Capture Ratio</span>
-                  <span className="font-semibold text-green-500">112%</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Down Capture Ratio</span>
-                  <span className="font-semibold text-green-500">85%</span>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       )}

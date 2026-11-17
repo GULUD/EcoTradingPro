@@ -15,7 +15,8 @@ router.get('/value', authenticateToken, requireUser, async (req, res, next) => {
 router.get('/performance', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const { timeRange = 30 } = req.query
-    res.json(await portfolioService.calculatePerformanceMetrics(req.user.id, parseInt(timeRange)))
+    const days = Math.min(365, Math.max(1, parseInt(timeRange, 10) || 30))
+    res.json(await portfolioService.calculatePerformanceMetrics(req.user.id, days))
   } catch (e) {
     next(e)
   }
@@ -40,9 +41,10 @@ router.get('/composition', authenticateToken, requireUser, async (req, res, next
 router.get('/report', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const { timeRange = 30 } = req.query
+    const days = Math.min(365, Math.max(1, parseInt(timeRange, 10) || 30))
     const [portfolio, performance, risk, composition] = await Promise.all([
       portfolioService.calculatePortfolioValue(req.user.id),
-      portfolioService.calculatePerformanceMetrics(req.user.id, parseInt(timeRange)),
+      portfolioService.calculatePerformanceMetrics(req.user.id, days),
       portfolioService.getRiskMetrics(req.user.id),
       portfolioService.getPortfolioComposition(req.user.id),
     ])

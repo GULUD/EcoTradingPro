@@ -12,6 +12,22 @@ function rotationGuard(req, res, next) {
     .json({ success: false, code: 'PASSWORD_CHANGE_REQUIRED', error: 'Password change required' })
 }
 
+// Public endpoints that personalise their response still want to know who is asking
+async function optionalUser(req, res, next) {
+  const token = (req.headers.authorization || '').split(' ')[1]
+  if (!token) return next()
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
+    if (decoded.role === 'user') {
+      const user = await prisma.user.findUnique({ where: { id: decoded.id } })
+      if (user && user.isActive) req.user = user
+    }
+  } catch (e) {
+    // Invalid token simply means anonymous access
+  }
+  next()
+}
+
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization
   const token = authHeader && authHeader.split(' ')[1]
@@ -61,4 +77,4 @@ function requireUser(req, res, next) {
   next()
 }
 
-module.exports = { authenticateToken, requireAdmin, requireUser }
+module.exports = { authenticateToken, requireAdmin, requireUser, optionalUser }

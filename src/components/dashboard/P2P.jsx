@@ -82,15 +82,18 @@ function P2P() {
   const [orderAd, setOrderAd] = useState(null)
   const [orderAmount, setOrderAmount] = useState('')
   const [orderError, setOrderError] = useState('')
+  const [orderBusy, setOrderBusy] = useState(false)
 
   const [payOrder, setPayOrder] = useState(null)
   const [payMethodIndex, setPayMethodIndex] = useState('0')
   const [payRef, setPayRef] = useState('')
   const [payError, setPayError] = useState('')
+  const [payBusy, setPayBusy] = useState(false)
 
   const [reasonDialog, setReasonDialog] = useState(null)
   const [reasonText, setReasonText] = useState('')
   const [reasonError, setReasonError] = useState('')
+  const [reasonBusy, setReasonBusy] = useState(false)
 
   const loadProfile = async () => {
     try {
@@ -262,8 +265,8 @@ function P2P() {
 
   const orderFiat = orderAd ? Number(orderAmount || 0) * Number(orderAd.price || 0) : 0
 
-  const submitOrder = () => {
-    if (!orderAd) return
+  const submitOrder = async () => {
+    if (!orderAd || orderBusy) return
     const amount = Number(orderAmount)
     if (!(amount > 0)) {
       setOrderError('Enter a GULU amount')
@@ -279,14 +282,20 @@ function P2P() {
       )
       return
     }
-    run(async () => {
+    setOrderBusy(true)
+    setOrderError('')
+    try {
       const response = await axios.post('/api/p2p/orders', { adId: orderAd.id, amount })
       setOrderAd(null)
       setOrderAmount('')
       setTab('orders')
       setNotice(`Order created: ${fmt(response.data.order?.amount, 8)} GULU`)
       await refreshAll()
-    })
+    } catch (err) {
+      setOrderError(err.response?.data?.error || 'Failed to place the order')
+    } finally {
+      setOrderBusy(false)
+    }
   }
 
   const openPay = (order) => {
@@ -296,8 +305,8 @@ function P2P() {
     setPayError('')
   }
 
-  const submitPay = () => {
-    if (!payOrder) return
+  const submitPay = async () => {
+    if (!payOrder || payBusy) return
     const method = payOrder.paymentMethods?.[Number(payMethodIndex)]
     if (!method) {
       setPayError('Select a payment method')
@@ -307,7 +316,9 @@ function P2P() {
       setPayError('Enter the payment reference')
       return
     }
-    run(async () => {
+    setPayBusy(true)
+    setPayError('')
+    try {
       await axios.post(`/api/p2p/orders/${payOrder.id}/pay`, {
         method: `${method.type}:${method.account}`,
         ref: payRef.trim(),
@@ -315,7 +326,11 @@ function P2P() {
       setPayOrder(null)
       setNotice('Payment submitted, waiting for the seller to release')
       await refreshAll()
-    })
+    } catch (err) {
+      setPayError(err.response?.data?.error || 'Failed to submit the payment')
+    } finally {
+      setPayBusy(false)
+    }
   }
 
   const releaseOrder = (order) => {
@@ -333,20 +348,26 @@ function P2P() {
     setReasonError('')
   }
 
-  const submitReason = () => {
-    if (!reasonDialog) return
+  const submitReason = async () => {
+    if (!reasonDialog || reasonBusy) return
     const reason = reasonText.trim()
     if (!reason) {
       setReasonError('Enter a reason')
       return
     }
     const { order, action } = reasonDialog
-    run(async () => {
+    setReasonBusy(true)
+    setReasonError('')
+    try {
       await axios.post(`/api/p2p/orders/${order.id}/${action}`, { reason })
       setReasonDialog(null)
       setNotice(action === 'cancel' ? 'Order cancelled' : 'Dispute opened')
       await refreshAll()
-    })
+    } catch (err) {
+      setReasonError(err.response?.data?.error || 'Request failed')
+    } finally {
+      setReasonBusy(false)
+    }
   }
 
   const cancelOrder = (order) => openReasonDialog(order, 'cancel')
@@ -844,8 +865,8 @@ function P2P() {
               </div>
               {orderError && <p className="text-sm text-red-500">{orderError}</p>}
               <div className="flex gap-3">
-                <button onClick={submitOrder} disabled={busy} className={`${PRIMARY} flex-1`}>
-                  Place order
+                <button onClick={submitOrder} disabled={orderBusy} className={`${PRIMARY} flex-1`}>
+                  {orderBusy ? 'Placing…' : 'Place order'}
                 </button>
                 <button onClick={() => setOrderAd(null)} className={`${GHOST} flex-1`}>
                   Cancel
@@ -903,8 +924,8 @@ function P2P() {
               </div>
               {payError && <p className="text-sm text-red-500">{payError}</p>}
               <div className="flex gap-3">
-                <button onClick={submitPay} disabled={busy} className={`${PRIMARY} flex-1`}>
-                  I have paid
+                <button onClick={submitPay} disabled={payBusy} className={`${PRIMARY} flex-1`}>
+                  {payBusy ? 'Submitting…' : 'I have paid'}
                 </button>
                 <button onClick={() => setPayOrder(null)} className={`${GHOST} flex-1`}>
                   Cancel
@@ -949,8 +970,8 @@ function P2P() {
               </div>
               {reasonError && <p className="text-sm text-red-500">{reasonError}</p>}
               <div className="flex gap-3">
-                <button onClick={submitReason} disabled={busy} className={`${PRIMARY} flex-1`}>
-                  Submit
+                <button onClick={submitReason} disabled={reasonBusy} className={`${PRIMARY} flex-1`}>
+                  {reasonBusy ? 'Submitting…' : 'Submit'}
                 </button>
                 <button onClick={() => setReasonDialog(null)} className={`${GHOST} flex-1`}>
                   Back
