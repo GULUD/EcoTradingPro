@@ -77,15 +77,17 @@ function Portfolio() {
     }, 0)
   }
 
-  const getAssetAllocation = () => {
-    const totalValue = calculatePortfolioValue()
-    if (totalValue === 0) return []
-    
+  // Allocation is a share of the whole account, so cash is part of the denominator;
+  // otherwise the stacked bar and legend exceed 100% whenever the user holds cash
+  const getAssetAllocation = (accountValue = calculatePortfolioValue()) => {
+    const holdingsValue = calculatePortfolioValue()
+    if (holdingsValue === 0 || accountValue <= 0) return []
+
     return Object.entries(portfolio).map(([asset, rawQuantity]) => {
       const quantity = Number(rawQuantity) || 0
       const price = marketPrices[`${asset}/GULU`]?.price || 0
       const value = quantity * price
-      const percentage = (value / totalValue) * 100
+      const percentage = (value / accountValue) * 100
       return {
         asset,
         quantity,
@@ -132,10 +134,11 @@ function Portfolio() {
   const profitLoss = hasPerformance ? Number(performance.totalPnL) : null
   const profitLossPercentage = hasPerformance ? Number(performance.totalReturn) : null
   const winRate = hasPerformance ? Number(performance.winRate) : null
-  const assetAllocation = getAssetAllocation()
+  const cashBalance = Number(user?.balance) || 0
+  const totalWithCash = portfolioValue + cashBalance
+  const cashShare = totalWithCash > 0 ? (cashBalance / totalWithCash) * 100 : 0
+  const assetAllocation = getAssetAllocation(totalWithCash)
   const tradeStats = getTradeStatistics()
-  const totalWithCash = portfolioValue + (Number(user?.balance) || 0)
-  const cashShare = totalWithCash > 0 ? ((Number(user?.balance) || 0) / totalWithCash) * 100 : 0
 
   return (
     <div className="space-y-6">
@@ -145,7 +148,7 @@ function Portfolio() {
           <h3 className="text-lg font-semibold mb-2">Portfolio Value</h3>
           <p className="text-3xl font-bold text-brand-500">{portfolioValue.toLocaleString()} GULU</p>
           <p className="text-sm text-gray-500 mt-1">
-            {(Number(user?.balance) || 0).toLocaleString()} GULU cash available
+            {cashBalance.toLocaleString()} GULU cash available
           </p>
         </div>
         

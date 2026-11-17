@@ -346,10 +346,10 @@ function Watchlist() {
                       </td>
                       <td className="text-right py-3">
                         <div className={`font-semibold ${
-                          (priceData?.change || 0) >= 0 ? 'text-emerald-500' : 'text-red-500'
+                          Number(priceData?.change || 0) >= 0 ? 'text-emerald-500' : 'text-red-500'
                         }`}>
-                          {(priceData?.change || 0) >= 0 ? '+' : ''}
-                          {priceData?.change?.toFixed(2) || '0'}%
+                          {Number(priceData?.change || 0) >= 0 ? '+' : ''}
+                          {Number(priceData?.change || 0).toFixed(2)}%
                         </div>
                       </td>
                       <td className="text-right py-3">
