@@ -29,12 +29,12 @@ function UserDashboard() {
   const [activeTab, setActiveTab] = useState('buy')
   const [activeTimeFilter, setActiveTimeFilter] = useState('1W')
   const [marketData, setMarketData] = useState({
-    'BTC/USDT': { price: 68355, change: 1.2 },
-    'ETH/USDT': { price: 3210, change: -0.4 },
-    'SOL/USDT': { price: 182.4, change: 2.1 },
-    'XRP/USDT': { price: 0.62, change: 0.7 },
-    'BNB/USDT': { price: 598.3, change: 0.9 },
-    'ADA/USDT': { price: 0.52, change: -0.3 }
+    'BTC/GULU': { price: 68355, change: 1.2 },
+    'ETH/GULU': { price: 3210, change: -0.4 },
+    'SOL/GULU': { price: 182.4, change: 2.1 },
+    'XRP/GULU': { price: 0.62, change: 0.7 },
+    'BNB/GULU': { price: 598.3, change: 0.9 },
+    'ADA/GULU': { price: 0.52, change: -0.3 }
   })
 
   // Fetch market data
@@ -83,7 +83,7 @@ function UserDashboard() {
         data: {
           labels: [],
           datasets: [{
-            label: 'BTC/USDT',
+            label: 'BTC/GULU',
             data: [],
             borderColor: '#10B981',
             backgroundColor: 'rgba(16, 185, 129, 0.1)',
@@ -380,12 +380,12 @@ function DashboardHome({
     activeOrders: 12
   })
   const [marketData, setMarketData] = useState({
-    'BTC/USDT': { price: 68355, change: 1.2 },
-    'ETH/USDT': { price: 3210, change: -0.4 },
-    'SOL/USDT': { price: 182.4, change: 2.1 },
-    'XRP/USDT': { price: 0.62, change: 0.7 },
-    'BNB/USDT': { price: 598.3, change: 0.9 },
-    'ADA/USDT': { price: 0.52, change: -0.3 }
+    'BTC/GULU': { price: 68355, change: 1.2 },
+    'ETH/GULU': { price: 3210, change: -0.4 },
+    'SOL/GULU': { price: 182.4, change: 2.1 },
+    'XRP/GULU': { price: 0.62, change: 0.7 },
+    'BNB/GULU': { price: 598.3, change: 0.9 },
+    'ADA/GULU': { price: 0.52, change: -0.3 }
   })
 
   const cryptoIcons = {
