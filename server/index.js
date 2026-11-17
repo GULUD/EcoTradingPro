@@ -27,6 +27,7 @@ const { tickPrices } = require('./services/priceEngine')
 const { tick: tickBook } = require('./services/marketMaker')
 const { autoReleaseTick } = require('./services/p2pBot')
 const { triggerStopOrders } = require('./services/stopOrders')
+const { checkPriceAlerts } = require('./services/priceAlerts')
 const { router: authRouter } = require('./routes/auth')
 
 const app = express()
@@ -165,6 +166,7 @@ let priceTimer = null
 let bookTimer = null
 let p2pTimer = null
 let stopTimer = null
+let alertTimer = null
 
 if (JOBS_ENABLED) {
   priceTimer = setInterval(() => runJob('price', tickPrices), 3000)
@@ -178,6 +180,9 @@ if (JOBS_ENABLED) {
 
   // Stop orders are checked against the price the engine just published
   stopTimer = setInterval(() => runJob('stops', triggerStopOrders), 3000)
+
+  // Price alerts only need minute-level precision and the sweep scans users
+  alertTimer = setInterval(() => runJob('alerts', checkPriceAlerts), 60000)
 } else {
   console.log('[jobs] background jobs disabled (RUN_JOBS=false)')
 }
@@ -188,6 +193,7 @@ process.on('SIGTERM', () => {
   clearInterval(bookTimer)
   clearInterval(p2pTimer)
   clearInterval(stopTimer)
+  clearInterval(alertTimer)
   server.close(() => {
     prisma.$disconnect().finally(() => process.exit(0))
   })

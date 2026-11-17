@@ -63,7 +63,6 @@ router.get('/prices', async (req, res, next) => {
         change24h: c.change24h,
         volume: c.volume24h,
         volume24h: c.volume24h,
-        marketCap: 0,
         timestamp: Date.now(),
       }
     }
@@ -143,13 +142,12 @@ router.get('/trades/:symbol', async (req, res, next) => {
 router.get('/overview', async (req, res, next) => {
   try {
     const coins = await loadCoins()
+    // Only figures the venue can actually measure; no market-cap or dominance
+    // estimate is possible because the token supply is not a market cap
     res.json({
-      totalMarketCap: 0,
       total24hVolume: coins.reduce((s, c) => s + c.volume24h, 0),
-      btcDominance: 45.2,
       activeCoins: coins.length,
       markets: coins.length,
-      marketCapChange24h: 2.34,
     })
   } catch (e) {
     next(e)

@@ -1,28 +1,12 @@
-const express = require('express')
+﻿const express = require('express')
 const prisma = require('../db')
 const { authenticateToken, requireUser } = require('../middleware/auth')
 const { executeOrder, cancelOrder, orderDto, TradeError } = require('../services/matchingEngine')
+const portfolioService = require('../services/portfolioService')
 
 const router = express.Router()
 
 const asArray = (v) => (Array.isArray(v) ? v : [])
-
-// Serializable writes abort under contention; retry briefly, then report a conflict instead of a 500
-async function serializable(fn) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await prisma.$transaction(fn, { isolationLevel: 'Serializable' })
-    } catch (e) {
-      if (e.code === 'P2034' && attempt < 2) continue
-      if (e.code === 'P2034') {
-        const err = new Error('Concurrent update, please retry')
-        err.status = 409
-        throw err
-      }
-      throw e
-    }
-  }
-}
 
 const toTradeDto = (t) => ({
   id: t.id,
@@ -55,7 +39,6 @@ router.get('/profile', authenticateToken, requireUser, async (req, res, next) =>
       portfolio: u.portfolio,
       watchlist: u.watchlist,
       priceAlerts: u.priceAlerts,
-      tradingBots: u.tradingBots,
       isActive: u.isActive,
       createdAt: u.createdAt,
     })
@@ -66,11 +49,7 @@ router.get('/profile', authenticateToken, requireUser, async (req, res, next) =>
 
 router.get('/trades', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    const trades = await prisma.trade.findMany({
-      where: { userId: req.user.id, source: 'user' },
-      orderBy: { time: 'desc' },
-      take: 200,
-    })
+    const trades = await portfolioService.annotateTrades(req.user.id, { limit: 200 })
     res.json(trades.map(toTradeDto))
   } catch (e) {
     next(e)
@@ -212,11 +191,16 @@ router.post('/watchlist', authenticateToken, requireUser, async (req, res, next)
   try {
     const { asset } = req.body
     if (!asset) return res.status(400).json({ success: false, error: 'asset required' })
+    const symbol = String(asset).toUpperCase()
+    const coin = await prisma.marketData.findUnique({ where: { symbol } })
+    if (!coin || coin.delisted) {
+      return res.status(400).json({ success: false, error: 'market not available' })
+    }
     const list = asArray(req.user.watchlist)
-    if (list.some((i) => i.asset === asset)) {
+    if (list.some((i) => i.asset === symbol)) {
       return res.status(400).json({ success: false, error: 'Asset already in watchlist' })
     }
-    list.push({ asset, addedAt: new Date().toISOString() })
+    list.push({ asset: symbol, addedAt: new Date().toISOString() })
     await prisma.user.update({ where: { id: req.user.id }, data: { watchlist: list } })
     res.json({ success: true })
   } catch (e) {
@@ -241,14 +225,20 @@ router.get('/alerts', authenticateToken, requireUser, async (req, res) => {
 router.post('/alerts', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const { asset, price, type } = req.body
-    if (!asset || price == null || !['above', 'below'].includes(type)) {
+    const target = +price
+    if (!asset || !Number.isFinite(target) || target <= 0 || !['above', 'below'].includes(type)) {
       return res.status(400).json({ success: false, error: 'asset / price / type required' })
+    }
+    const symbol = String(asset).toUpperCase()
+    const coin = await prisma.marketData.findUnique({ where: { symbol } })
+    if (!coin || coin.delisted) {
+      return res.status(400).json({ success: false, error: 'market not available' })
     }
     const list = asArray(req.user.priceAlerts)
     const alert = {
       id: Date.now().toString(),
-      asset,
-      price: +price,
+      asset: symbol,
+      price: target,
       type,
       status: 'active',
       createdAt: new Date().toISOString(),
@@ -321,156 +311,13 @@ router.get('/orders/history', authenticateToken, requireUser, async (req, res, n
 router.get('/trades/history', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const { type, days } = req.query
-    const where = { userId: req.user.id, source: 'user' }
-    if (type && type !== 'all') where.side = type
-    if (days) {
-      where.time = { gte: BigInt(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000) }
-    }
-    const trades = await prisma.trade.findMany({ where, orderBy: { time: 'desc' }, take: 500 })
+    const since = days ? BigInt(Date.now() - parseInt(days) * 24 * 60 * 60 * 1000) : null
+    const trades = await portfolioService.annotateTrades(req.user.id, {
+      side: type && type !== 'all' ? type : null,
+      since,
+      limit: 500,
+    })
     res.json(trades.map(toTradeDto))
-  } catch (e) {
-    next(e)
-  }
-})
-
-// --- User trading bots ---
-
-router.get('/trading-bots', authenticateToken, requireUser, (req, res) => {
-  res.json(asArray(req.user.tradingBots))
-})
-
-router.post('/trading-bots', authenticateToken, requireUser, async (req, res, next) => {
-  try {
-    const { name, strategy, asset, investment, ...config } = req.body
-    const inv = +investment
-    if (!(inv > 0) || inv > req.user.balance) {
-      return res.status(400).json({ success: false, error: 'Insufficient balance' })
-    }
-
-    const bot = {
-      id: Date.now().toString(),
-      name,
-      strategy,
-      asset,
-      investment: inv,
-      config,
-      status: 'active',
-      profit: 0,
-      trades: 0,
-      performance: 0,
-      createdAt: new Date().toISOString(),
-    }
-
-    // Re-read inside the transaction: the auth snapshot may already be stale and would
-    // resurrect bots removed by a parallel delete
-    const debited = await serializable(async (tx) => {
-      const u = await tx.user.findUnique({ where: { id: req.user.id } })
-      const list = asArray(u.tradingBots)
-      list.push(bot)
-      const res = await tx.user.updateMany({
-        where: { id: req.user.id, balance: { gte: inv } },
-        data: { balance: { decrement: inv }, tradingBots: list },
-      })
-      if (res.count > 0) {
-        await tx.transaction.create({
-          data: {
-            userId: req.user.id,
-            type: 'bot_invest',
-            amount: -inv,
-            balanceBefore: u.balance,
-            balanceAfter: +(u.balance - inv).toFixed(8),
-            reason: `bot ${bot.name}`,
-            ts: BigInt(Date.now()),
-          },
-        })
-      }
-      return res
-    })
-    if (debited.count === 0) {
-      return res.status(400).json({ success: false, error: 'Insufficient balance' })
-    }
-    res.json({ success: true, bot })
-  } catch (e) {
-    next(e)
-  }
-})
-
-router.patch('/trading-bots/:botId/:action', authenticateToken, requireUser, async (req, res, next) => {
-  try {
-    const { botId, action } = req.params
-    if (!['start', 'pause'].includes(action)) {
-      return res.status(400).json({ success: false, error: 'Invalid action' })
-    }
-    // Same reason as create: write the list only after re-reading it in the transaction
-    const found = await serializable(async (tx) => {
-      const u = await tx.user.findUnique({ where: { id: req.user.id } })
-      const list = asArray(u.tradingBots)
-      const bot = list.find((b) => b.id === botId)
-      if (!bot) return false
-      bot.status = action === 'start' ? 'active' : 'paused'
-      await tx.user.update({ where: { id: req.user.id }, data: { tradingBots: list } })
-      return true
-    })
-    if (!found) return res.status(404).json({ success: false, error: 'Bot not found' })
-    res.json({ success: true })
-  } catch (e) {
-    next(e)
-  }
-})
-
-router.delete('/trading-bots/:botId', authenticateToken, requireUser, async (req, res, next) => {
-  try {
-    // Refund must be tied to the removal itself; a stale read lets two concurrent deletes refund twice
-    const run = () =>
-      prisma.$transaction(
-        async (tx) => {
-          const u = await tx.user.findUnique({ where: { id: req.user.id } })
-          if (!u) return { status: 404 }
-          const list = asArray(u.tradingBots)
-          const idx = list.findIndex((b) => b.id === req.params.botId)
-          if (idx === -1) return { status: 404 }
-          const bot = list[idx]
-          // Historic JSON may hold strings; coerce before adding so refunds cannot concatenate
-          const refund = +((Number(bot.investment) || 0) + (Number(bot.profit) || 0)).toFixed(8)
-          await tx.user.update({
-            where: { id: req.user.id },
-            data: {
-              balance: { increment: refund },
-              tradingBots: list.filter((_, i) => i !== idx),
-            },
-          })
-          if (Math.abs(refund) > 1e-9) {
-            await tx.transaction.create({
-              data: {
-                userId: req.user.id,
-                type: 'bot_refund',
-                amount: refund,
-                balanceBefore: u.balance,
-                balanceAfter: +(u.balance + refund).toFixed(8),
-                reason: `bot ${bot.name || req.params.botId} removed`,
-                ts: BigInt(Date.now()),
-              },
-            })
-          }
-          return { status: 200 }
-        },
-        { isolationLevel: 'Serializable' }
-      )
-
-    let result
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        result = await run()
-        break
-      } catch (e) {
-        if (e.code === 'P2034' && attempt === 0) continue
-        throw e
-      }
-    }
-    if (!result || result.status === 404) {
-      return res.status(404).json({ success: false, error: 'Bot not found' })
-    }
-    res.json({ success: true })
   } catch (e) {
     next(e)
   }

@@ -94,6 +94,7 @@ export const WebSocketProvider = ({ children }) => {
       setNotifications((prev) => [
         {
           id: `trade-${trade.time}-${trade.symbol}-${trade.price}`,
+          type: 'trade',
           title: 'Trade executed',
           message: `${trade.side} ${trade.size} ${trade.symbol} @ ${trade.price}`,
         },

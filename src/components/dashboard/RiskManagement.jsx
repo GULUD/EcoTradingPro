@@ -1,13 +1,20 @@
-import React, { useEffect, useState } from 'react'
+﻿import React, { useEffect, useState } from 'react'
 import axios from '../../utils/axios'
 
 const EMPTY = 'No data yet'
 
 const fmtGulu = (value, digits = 2) => {
+  if (value == null) return EMPTY
   const number = Number(value)
   return Number.isFinite(number)
     ? `${number.toLocaleString(undefined, { maximumFractionDigits: digits })} GULU`
     : EMPTY
+}
+
+const fmtNumber = (value, digits = 2) => {
+  if (value == null) return EMPTY
+  const number = Number(value)
+  return Number.isFinite(number) ? number.toFixed(digits) : EMPTY
 }
 
 const getRiskColor = (risk) => {
@@ -33,18 +40,10 @@ const RiskManagement = () => {
   const [loading, setLoading] = useState(true)
 
   const [calculator, setCalculator] = useState({
-    balance: '10000',
+    balance: '',
     riskPercent: '2',
-    entryPrice: '45000',
-    stopLoss: '42000',
-  })
-
-  const [riskSettings, setRiskSettings] = useState({
-    maxRiskPerTrade: 2,
-    maxPortfolioRisk: 10,
-    stopLossPercentage: 5,
-    takeProfitRatio: 2,
-    maxPositions: 10,
+    entryPrice: '',
+    stopLoss: '',
   })
 
   const [activeTab, setActiveTab] = useState('overview')
@@ -124,25 +123,6 @@ const RiskManagement = () => {
             <h2 className="text-2xl font-bold">Risk Management</h2>
             <p className="text-gray-600 dark:text-gray-300">Monitor and control portfolio risk exposure</p>
           </div>
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled
-              title="Coming soon"
-              className="px-4 py-2 bg-green-500 text-white rounded-lg opacity-50 cursor-not-allowed"
-            >
-              Generate Report
-            </button>
-            <button
-              type="button"
-              disabled
-              title="Coming soon"
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg opacity-50 cursor-not-allowed"
-            >
-              Export Data
-            </button>
-          </div>
         </div>
       </div>
 
@@ -201,7 +181,7 @@ const RiskManagement = () => {
             <div>
               <p className="text-gray-500 text-sm">Beta to Market</p>
               <p className="text-2xl font-bold">
-                {risk ? Number(risk.betaToMarket).toFixed(2) : EMPTY}
+                {risk ? fmtNumber(risk.betaToMarket) : EMPTY}
               </p>
             </div>
             <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
@@ -218,7 +198,6 @@ const RiskManagement = () => {
           {[
             { id: 'overview', name: 'Risk Overview' },
             { id: 'positions', name: 'Position Analysis' },
-            { id: 'settings', name: 'Risk Settings' },
             { id: 'alerts', name: 'Risk Alerts' },
           ].map((tab) => (
             <button
@@ -276,7 +255,7 @@ const RiskManagement = () => {
               <div className="flex justify-between items-center">
                 <span>Beta (vs Market)</span>
                 <span className="font-semibold">
-                  {risk ? Number(risk.betaToMarket).toFixed(2) : EMPTY}
+                  {fmtNumber(risk?.betaToMarket)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -372,112 +351,6 @@ const RiskManagement = () => {
         </div>
       )}
 
-      {activeTab === 'settings' && (
-        <div className="glass rounded-2xl p-6">
-          <h3 className="text-xl font-bold mb-4">Risk Management Settings</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Max Risk Per Trade (%)</label>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="10"
-                  step="0.5"
-                  value={riskSettings.maxRiskPerTrade}
-                  onChange={(e) => setRiskSettings({ ...riskSettings, maxRiskPerTrade: parseFloat(e.target.value) })}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-sm text-gray-500">
-                  <span>0.5%</span>
-                  <span className="font-semibold">{riskSettings.maxRiskPerTrade}%</span>
-                  <span>10%</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Max Portfolio Risk (%)</label>
-                <input
-                  type="range"
-                  min="5"
-                  max="50"
-                  step="5"
-                  value={riskSettings.maxPortfolioRisk}
-                  onChange={(e) => setRiskSettings({ ...riskSettings, maxPortfolioRisk: parseInt(e.target.value) })}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-sm text-gray-500">
-                  <span>5%</span>
-                  <span className="font-semibold">{riskSettings.maxPortfolioRisk}%</span>
-                  <span>50%</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Default Stop Loss (%)</label>
-                <input
-                  type="range"
-                  min="1"
-                  max="20"
-                  step="1"
-                  value={riskSettings.stopLossPercentage}
-                  onChange={(e) => setRiskSettings({ ...riskSettings, stopLossPercentage: parseInt(e.target.value) })}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-sm text-gray-500">
-                  <span>1%</span>
-                  <span className="font-semibold">{riskSettings.stopLossPercentage}%</span>
-                  <span>20%</span>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Take Profit Ratio</label>
-                <input
-                  type="range"
-                  min="1"
-                  max="5"
-                  step="0.5"
-                  value={riskSettings.takeProfitRatio}
-                  onChange={(e) => setRiskSettings({ ...riskSettings, takeProfitRatio: parseFloat(e.target.value) })}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-sm text-gray-500">
-                  <span>1:1</span>
-                  <span className="font-semibold">1:{riskSettings.takeProfitRatio}</span>
-                  <span>1:5</span>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">Max Open Positions</label>
-                <input
-                  type="range"
-                  min="1"
-                  max="20"
-                  step="1"
-                  value={riskSettings.maxPositions}
-                  onChange={(e) => setRiskSettings({ ...riskSettings, maxPositions: parseInt(e.target.value) })}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-sm text-gray-500">
-                  <span>1</span>
-                  <span className="font-semibold">{riskSettings.maxPositions}</span>
-                  <span>20</span>
-                </div>
-              </div>
-              <div className="mt-6">
-                <button
-                  type="button"
-                  disabled
-                  title="Coming soon"
-                  className="w-full py-3 bg-brand-500 text-white rounded-lg font-semibold opacity-50 cursor-not-allowed"
-                >
-                  Save Risk Settings
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {activeTab === 'alerts' && (
         <div className="glass rounded-2xl p-6">

@@ -1,12 +1,8 @@
 
 import React, { useState, useEffect } from 'react'
-import { useAuth } from '../../contexts/AuthContext'
-import { useWebSocket } from '../../contexts/WebSocketContext'
 import axios from '../../utils/axios'
 
 function Watchlist() {
-  const { user } = useAuth()
-  const { socket } = useWebSocket()
   const [watchlist, setWatchlist] = useState([])
   const [priceAlerts, setPriceAlerts] = useState([])
   const [marketPrices, setMarketPrices] = useState({})
@@ -15,29 +11,19 @@ function Watchlist() {
   const [selectedAsset, setSelectedAsset] = useState('BTC')
   const [alertPrice, setAlertPrice] = useState('')
   const [alertType, setAlertType] = useState('above')
+  const [alertError, setAlertError] = useState('')
   const [sortBy, setSortBy] = useState('symbol')
   const [sortOrder, setSortOrder] = useState('asc')
-
-  const availableAssets = ['BTC', 'ETH', 'SOL', 'ADA', 'XRP', 'BNB', 'MATIC', 'DOT', 'LINK', 'UNI']
+  const [availableAssets, setAvailableAssets] = useState([])
 
   useEffect(() => {
     fetchWatchlist()
     fetchPriceAlerts()
     fetchMarketPrices()
-    
+
     const interval = setInterval(fetchMarketPrices, 3000)
     return () => clearInterval(interval)
   }, [])
-
-  useEffect(() => {
-    if (socket) {
-      socket.on('priceUpdate', handlePriceUpdate)
-
-      return () => {
-        socket.off('priceUpdate', handlePriceUpdate)
-      }
-    }
-  }, [socket])
 
   const fetchWatchlist = async () => {
     try {
@@ -65,15 +51,17 @@ function Watchlist() {
 
   const fetchMarketPrices = async () => {
     try {
-      const response = await axios.get('/api/market/prices')
-      setMarketPrices(response.data)
+      const [pricesResponse, listResponse] = await Promise.all([
+        axios.get('/api/market/prices'),
+        axios.get('/api/market/list'),
+      ])
+      setMarketPrices(pricesResponse.data)
+      if (Array.isArray(listResponse.data?.data)) {
+        setAvailableAssets(listResponse.data.data.map((coin) => coin.symbol))
+      }
     } catch (error) {
       console.error('Error fetching market prices:', error)
     }
-  }
-
-  const handlePriceUpdate = (data) => {
-    setMarketPrices(prev => ({ ...prev, ...data }))
   }
 
   const addToWatchlist = async (asset) => {
@@ -102,11 +90,16 @@ function Watchlist() {
   }
 
   const createPriceAlert = async () => {
+    const price = parseFloat(alertPrice)
+    if (!(price > 0)) {
+      setAlertError('Enter a target price greater than zero')
+      return
+    }
     try {
       const token = localStorage.getItem('token')
       await axios.post('/api/users/alerts', {
         asset: selectedAsset,
-        price: parseFloat(alertPrice),
+        price,
         type: alertType
       }, {
         headers: { Authorization: `Bearer ${token}` }
@@ -114,8 +107,9 @@ function Watchlist() {
       fetchPriceAlerts()
       setShowAlertForm(false)
       setAlertPrice('')
+      setAlertError('')
     } catch (error) {
-      console.error('Error creating price alert:', error)
+      setAlertError(error.response?.data?.error || 'Failed to create price alert')
     }
   }
 
@@ -264,8 +258,9 @@ function Watchlist() {
                   placeholder="0.00"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Current: ${marketPrices[`${selectedAsset}/GULU`]?.price?.toLocaleString() || '0'}
+                  Current: {marketPrices[`${selectedAsset}/GULU`]?.price?.toLocaleString() || '0'} GULU
                 </p>
+                {alertError && <p className="text-xs text-red-500 mt-1">{alertError}</p>}
               </div>
             </div>
             <div className="flex gap-2 mt-6">
@@ -334,7 +329,7 @@ function Watchlist() {
                       </td>
                       <td className="text-right py-3">
                         <div className="font-semibold">
-                          ${priceData?.price?.toLocaleString() || '0'}
+                          {priceData?.price?.toLocaleString() || '0'} GULU
                         </div>
                       </td>
                       <td className="text-right py-3">
@@ -377,10 +372,10 @@ function Watchlist() {
                 <div>
                   <div className="font-semibold">{alert.asset}/GULU</div>
                   <div className="text-sm text-gray-500">
-                    Alert when price goes {alert.type} ${alert.price?.toLocaleString()}
+                    Alert when price goes {alert.type} {alert.price?.toLocaleString()} GULU
                   </div>
                   <div className="text-xs text-gray-400">
-                    Current: ${marketPrices[`${alert.asset}/GULU`]?.price?.toLocaleString() || '0'}
+                    Current: {marketPrices[`${alert.asset}/GULU`]?.price?.toLocaleString() || '0'} GULU
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

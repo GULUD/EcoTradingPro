@@ -120,48 +120,6 @@ function Notifications() {
           </div>
         )}
       </div>
-
-      {/* Notification Settings */}
-      <div className="glass rounded-2xl p-6">
-        <h3 className="text-lg font-bold mb-4">Notification Preferences</h3>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="font-medium">Price Alerts</h4>
-              <p className="text-sm text-gray-500">Get notified when your assets hit target prices</p>
-            </div>
-            <input type="checkbox" defaultChecked className="w-4 h-4 text-brand-500 rounded" />
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="font-medium">Trade Confirmations</h4>
-              <p className="text-sm text-gray-500">Receive notifications for completed trades</p>
-            </div>
-            <input type="checkbox" defaultChecked className="w-4 h-4 text-brand-500 rounded" />
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="font-medium">Market News</h4>
-              <p className="text-sm text-gray-500">Stay updated with important market news</p>
-            </div>
-            <input type="checkbox" defaultChecked className="w-4 h-4 text-brand-500 rounded" />
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="font-medium">Browser Notifications</h4>
-              <p className="text-sm text-gray-500">Show notifications in your browser</p>
-            </div>
-            <input 
-              type="checkbox" 
-              defaultChecked={Notification.permission === 'granted'} 
-              className="w-4 h-4 text-brand-500 rounded" 
-            />
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

@@ -11,14 +11,11 @@ import {
   Wallet,
   BarChart3,
   Newspaper,
-  Bell,
-  Settings,
   UserRound,
   Sun,
   Moon,
   TrendingUp,
   Zap,
-  Megaphone,
   ArrowLeftRight,
 } from 'lucide-react'
 import AdminP2P from './AdminP2P'
@@ -263,22 +260,6 @@ function AdminDashboard() {
               <ArrowLeftRight className="w-5 h-5 mr-4" />
               {!sidebarCollapsed && <span className="font-medium">P2P / GULU</span>}
             </button>
-            <button
-              className="w-full flex items-center px-4 py-3 rounded-xl text-gray-500 opacity-50 cursor-not-allowed"
-              disabled
-              title="Coming soon"
-            >
-              <Bell className="w-5 h-5 mr-4" />
-              {!sidebarCollapsed && <span className="font-medium">Notifications</span>}
-            </button>
-            <button
-              className="w-full flex items-center px-4 py-3 rounded-xl text-gray-500 opacity-50 cursor-not-allowed"
-              disabled
-              title="Coming soon"
-            >
-              <Settings className="w-5 h-5 mr-4" />
-              {!sidebarCollapsed && <span className="font-medium">Settings</span>}
-            </button>
           </div>
         </nav>
 
@@ -346,17 +327,6 @@ function AdminDashboard() {
                   <span className="text-red-400 text-sm font-medium">Offline · Reconnect</span>
                 </button>
               )}
-
-              {/* Notifications */}
-              <button
-                className="relative p-2 rounded-xl text-gray-500 opacity-50 cursor-not-allowed"
-                disabled
-                title="Coming soon"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-5 5v-5z"></path>
-                </svg>
-              </button>
 
               {/* Logout */}
               <button
@@ -436,14 +406,6 @@ function AdminDashboard() {
                 >
                   <Wallet className="w-5 h-5 mr-3" />
                   <span className="font-medium">Adjust Balance</span>
-                </button>
-                <button
-                  disabled
-                  title="Coming soon"
-                  className="w-full p-6 bg-gradient-to-r from-green-600 to-green-500 rounded-xl opacity-50 cursor-not-allowed flex items-center justify-center"
-                >
-                  <Megaphone className="w-5 h-5 mr-3" />
-                  <span className="font-medium">Send Announcement</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('users')}

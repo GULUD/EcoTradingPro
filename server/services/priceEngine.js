@@ -7,20 +7,52 @@ function displayPrice(row) {
   return row.manualPrice ?? 0
 }
 
-// Price only moves when an order fills, so this tick just keeps 24h change in
-// sync with the last trade and broadcasts the snapshot.
+const DAY_MS = 24 * 60 * 60 * 1000
+const OPEN_REFRESH_MS = 60 * 1000
+
+let openCache = new Map()
+let openCacheAt = 0
+
+// The 24h reference must roll forward or "change24h" silently becomes
+// "change since the first fill"; the oldest fill inside the window is the open.
+async function refreshOpens(coins) {
+  const since = BigInt(Date.now() - DAY_MS)
+  const next = new Map()
+  await Promise.all(
+    coins.map(async (coin) => {
+      const first = await prisma.trade.findFirst({
+        where: { symbol: coin.symbol, time: { gte: since } },
+        orderBy: { time: 'asc' },
+        select: { price: true },
+      })
+      if (first && first.price > 0) next.set(coin.symbol, first.price)
+    })
+  )
+  openCache = next
+  openCacheAt = Date.now()
+}
+
+// Price only moves when an order fills, so this tick keeps 24h change in sync
+// with the last trade and broadcasts the snapshot.
 async function tickPrices(io) {
   const coins = await prisma.marketData.findMany({ where: { delisted: false } })
   const now = Date.now()
-  const changed = []
+  if (now - openCacheAt > OPEN_REFRESH_MS) await refreshOpens(coins)
 
+  const changed = []
   for (const c of coins) {
     const price = displayPrice(c)
     if (!price) continue
-    const open = c.open24h || price
+    // Markets that did not trade in the window keep their stored reference
+    const open = openCache.get(c.symbol) || c.open24h || price
     const change24h = +(((price - open) / open) * 100).toFixed(2)
-    if (change24h === c.change24h) continue
-    await prisma.marketData.update({ where: { symbol: c.symbol }, data: { change24h } })
+    if (change24h === c.change24h && open === c.open24h) continue
+    await prisma.marketData.update({
+      where: { symbol: c.symbol },
+      data: { change24h, open24h: open },
+    })
+    c.change24h = change24h
+    c.open24h = open
     changed.push({ symbol: c.symbol, price, change24h })
   }
 

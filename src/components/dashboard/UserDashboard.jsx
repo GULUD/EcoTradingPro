@@ -13,7 +13,6 @@ const Analytics = lazy(() => import('./Analytics'))
 const Notifications = lazy(() => import('./Notifications'))
 const OrderHistory = lazy(() => import('./OrderHistory'))
 const Watchlist = lazy(() => import('./Watchlist'))
-const TradingBots = lazy(() => import('./TradingBots'))
 const AdvancedCharts = lazy(() => import('./AdvancedCharts'))
 const RiskManagement = lazy(() => import('./RiskManagement'))
 const PerformanceAnalytics = lazy(() => import('./PerformanceAnalytics'))
@@ -90,7 +89,6 @@ function UserDashboard() {
               )}
             </div>
           </div>
-
           <nav className="px-4" onClick={() => setMobileSidebarOpen(false)}>
             <Link to="/dashboard" className="flex items-center gap-4 px-4 py-3 rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400 border-l-4 border-brand-500 mb-2">
               <i className="fas fa-home text-lg"></i>
@@ -115,10 +113,6 @@ function UserDashboard() {
             <Link to="/dashboard/advanced-charts" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
               <i className="fas fa-chart-line text-lg"></i>
               {!sidebarCollapsed && <span>Advanced Charts</span>}
-            </Link>
-            <Link to="/dashboard/trading-bots" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
-              <i className="fas fa-robot text-lg"></i>
-              {!sidebarCollapsed && <span>Trading Bots</span>}
             </Link>
             <Link to="/dashboard/notifications" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
               <i className="fas fa-bell text-lg"></i>
@@ -154,14 +148,6 @@ function UserDashboard() {
                 >
                   <i className="fas fa-bars"></i>
                 </button>
-                <div className="relative hidden sm:block">
-                  <input
-                    type="text"
-                    placeholder="Search cryptocurrencies..."
-                    className="w-56 lg:w-80 px-4 py-2 pl-10 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  />
-                  <i className="fas fa-search absolute left-3 top-3 text-gray-400"></i>
-                </div>
               </div>
 
               <div className="flex items-center gap-2 lg:gap-4">
@@ -171,14 +157,17 @@ function UserDashboard() {
                 >
                   <i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`}></i>
                 </button>
-                <button className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 relative">
+                <Link
+                  to="/dashboard/notifications"
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 relative"
+                >
                   <i className="fas fa-bell"></i>
                   {unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
                       {unreadCount}
                     </span>
                   )}
-                </button>
+                </Link>
 
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-500 to-emerald-500 flex items-center justify-center text-white font-bold">
@@ -226,7 +215,6 @@ function UserDashboard() {
               <Route path="/order-history" element={<OrderHistory />} />
               <Route path="/watchlist" element={<Watchlist />} />
               <Route path="/advanced-charts" element={<AdvancedCharts />} />
-              <Route path="/trading-bots" element={<TradingBots />} />
             </Routes>
             </Suspense>
           </main>
@@ -486,16 +474,6 @@ function DashboardHome({
           }`}
         >
           Advanced Charts
-        </button>
-        <button
-          onClick={() => setActiveView('trading-bots')}
-          className={`px-4 py-2 rounded-lg transition ${
-            activeView === 'trading-bots'
-              ? 'bg-brand-500 text-white'
-              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-          }`}
-        >
-          Trading Bots
         </button>
         <button
           onClick={() => setActiveView('order-history')}
@@ -828,7 +806,6 @@ function DashboardHome({
       )}
       <Suspense fallback={panelFallback}>
         {activeView === 'advanced-charts' && <AdvancedCharts />}
-        {activeView === 'trading-bots' && <TradingBots />}
         {activeView === 'notifications' && <Notifications />}
         {activeView === 'order-history' && <OrderHistory />}
         {activeView === 'watchlist' && <Watchlist />}

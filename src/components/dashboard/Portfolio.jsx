@@ -8,13 +8,15 @@ function Portfolio() {
   const [portfolio, setPortfolio] = useState({})
   const [trades, setTrades] = useState([])
   const [marketPrices, setMarketPrices] = useState({})
-  const [loading, setLoading] = useState(true)
+  const [performance, setPerformance] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchPortfolioData()
     fetchTrades()
     fetchMarketPrices()
+    fetchPerformance()
   }, [])
 
   const fetchPortfolioData = async () => {
@@ -52,6 +54,16 @@ function Portfolio() {
     }
   }
 
+  const fetchPerformance = async () => {
+    try {
+      const response = await axios.get('/api/portfolio/performance', { params: { timeRange: 30 } })
+      setPerformance(response.data)
+    } catch (error) {
+      console.error('[portfolio] performance fetch failed', error.message)
+      setPerformance(null)
+    }
+  }
+
   const calculatePortfolioValue = () => {
     return Object.entries(portfolio).reduce((total, [asset, quantity]) => {
       const price = marketPrices[`${asset}/GULU`]?.price || 0
@@ -63,19 +75,6 @@ function Portfolio() {
     return trades.filter(trade => trade.type === 'buy').reduce((total, trade) => {
       return total + trade.amount
     }, 0)
-  }
-
-  const calculateProfitLoss = () => {
-    const currentValue = calculatePortfolioValue()
-    const totalInvested = calculateTotalInvested()
-    return currentValue - totalInvested
-  }
-
-  const calculateProfitLossPercentage = () => {
-    const totalInvested = calculateTotalInvested()
-    if (totalInvested === 0) return 0
-    const profitLoss = calculateProfitLoss()
-    return (profitLoss / totalInvested) * 100
   }
 
   const getAssetAllocation = () => {
@@ -126,10 +125,16 @@ function Portfolio() {
   }
 
   const portfolioValue = calculatePortfolioValue()
-  const profitLoss = calculateProfitLoss()
-  const profitLossPercentage = calculateProfitLossPercentage()
+  // The server replays every fill with average cost; the browser cannot rebuild
+  // cost basis from a truncated trade list, so P&L comes from the report endpoint
+  const hasPerformance = performance != null && Number.isFinite(Number(performance.totalPnL))
+  const profitLoss = hasPerformance ? Number(performance.totalPnL) : null
+  const profitLossPercentage = hasPerformance ? Number(performance.totalReturn) : null
+  const winRate = hasPerformance ? Number(performance.winRate) : null
   const assetAllocation = getAssetAllocation()
   const tradeStats = getTradeStatistics()
+  const totalWithCash = portfolioValue + (Number(user?.balance) || 0)
+  const cashShare = totalWithCash > 0 ? ((Number(user?.balance) || 0) / totalWithCash) * 100 : 0
 
   return (
     <div className="space-y-6">
@@ -137,28 +142,38 @@ function Portfolio() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="glass rounded-2xl p-6">
           <h3 className="text-lg font-semibold mb-2">Portfolio Value</h3>
-          <p className="text-3xl font-bold text-brand-500">${portfolioValue.toLocaleString()}</p>
-          <p className="text-sm text-gray-500 mt-1">+${user?.balance?.toLocaleString() || '0'} available</p>
+          <p className="text-3xl font-bold text-brand-500">{portfolioValue.toLocaleString()} GULU</p>
+          <p className="text-sm text-gray-500 mt-1">
+            {(Number(user?.balance) || 0).toLocaleString()} GULU cash available
+          </p>
         </div>
         
         <div className="glass rounded-2xl p-6">
           <h3 className="text-lg font-semibold mb-2">Total P&L</h3>
-          <p className={`text-3xl font-bold ${profitLoss >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            ${Math.abs(profitLoss).toLocaleString()}
+          <p className={`text-3xl font-bold ${
+            profitLoss == null ? 'text-gray-500' : profitLoss >= 0 ? 'text-emerald-500' : 'text-red-500'
+          }`}>
+            {profitLoss == null
+              ? 'No data yet'
+              : `${profitLoss >= 0 ? '+' : '-'}${Math.abs(profitLoss).toLocaleString()} GULU`}
           </p>
-          <p className={`text-sm mt-1 ${profitLossPercentage >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            {profitLoss >= 0 ? '+' : '-'}{Math.abs(profitLossPercentage).toFixed(2)}%
+          <p className={`text-sm mt-1 ${
+            profitLossPercentage == null ? 'text-gray-500' : profitLossPercentage >= 0 ? 'text-emerald-500' : 'text-red-500'
+          }`}>
+            {profitLossPercentage == null
+              ? ''
+              : `${profitLossPercentage >= 0 ? '+' : ''}${profitLossPercentage.toFixed(2)}%`}
           </p>
         </div>
         
         <div className="glass rounded-2xl p-6">
-          <h3 className="text-lg font-semibold mb-2">Total Invested</h3>
-          <p className="text-3xl font-bold text-blue-500">${calculateTotalInvested().toLocaleString()}</p>
+          <h3 className="text-lg font-semibold mb-2">Total Bought</h3>
+          <p className="text-3xl font-bold text-blue-500">{calculateTotalInvested().toLocaleString()} GULU</p>
           <p className="text-sm text-gray-500 mt-1">{tradeStats.totalTrades} trades</p>
         </div>
         
         <div className="glass rounded-2xl p-6">
-          <h3 className="text-lg font-semibold mb-2">Best Performer</h3>
+          <h3 className="text-lg font-semibold mb-2">Largest Position</h3>
           <p className="text-3xl font-bold text-emerald-500">
             {assetAllocation.length > 0 ? assetAllocation[0].asset : 'N/A'}
           </p>
@@ -207,7 +222,7 @@ function Portfolio() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-semibold">${allocation.value.toLocaleString()}</div>
+                        <div className="font-semibold">{allocation.value.toLocaleString()} GULU</div>
                         <div className="text-sm text-gray-500">{allocation.percentage.toFixed(1)}%</div>
                       </div>
                     </div>
@@ -233,7 +248,7 @@ function Portfolio() {
                 </div>
                 <div className="flex justify-between p-3 rounded-lg bg-gray-50 dark:bg-white/5">
                   <span>Avg Trade Size</span>
-                  <span className="font-semibold">${tradeStats.avgTradeSize.toLocaleString()}</span>
+                  <span className="font-semibold">{tradeStats.avgTradeSize.toLocaleString()} GULU</span>
                 </div>
                 <div className="flex justify-between p-3 rounded-lg bg-gray-50 dark:bg-white/5">
                   <span>Most Traded</span>
@@ -273,8 +288,8 @@ function Portfolio() {
                           </div>
                         </td>
                         <td className="text-right py-3 px-4">{allocation.quantity.toFixed(6)}</td>
-                        <td className="text-right py-3 px-4">${allocation.price.toLocaleString()}</td>
-                        <td className="text-right py-3 px-4 font-semibold">${allocation.value.toLocaleString()}</td>
+                        <td className="text-right py-3 px-4">{allocation.price.toLocaleString()} GULU</td>
+                        <td className="text-right py-3 px-4 font-semibold">{allocation.value.toLocaleString()} GULU</td>
                         <td className="text-right py-3 px-4">
                           <div className="flex items-center justify-end gap-2">
                             <span>{allocation.percentage.toFixed(1)}%</span>
@@ -330,8 +345,8 @@ function Portfolio() {
                         </td>
                         <td className="py-3 px-4 font-semibold">{trade.asset}</td>
                         <td className="text-right py-3 px-4">{trade.quantity.toFixed(6)}</td>
-                        <td className="text-right py-3 px-4">${trade.price.toLocaleString()}</td>
-                        <td className="text-right py-3 px-4 font-semibold">${trade.amount.toLocaleString()}</td>
+                        <td className="text-right py-3 px-4">{trade.price.toLocaleString()} GULU</td>
+                        <td className="text-right py-3 px-4 font-semibold">{trade.amount.toLocaleString()} GULU</td>
                       </tr>
                     ))}
                   </tbody>
@@ -344,14 +359,43 @@ function Portfolio() {
         {activeTab === 'analytics' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div>
-              <h3 className="text-xl font-bold mb-4">Portfolio Performance</h3>
-              <div className="h-64 bg-gray-50 dark:bg-white/5 rounded-lg flex items-center justify-center">
-                <div className="text-center">
-                  <i className="fas fa-chart-line text-4xl mb-2"></i>
-                  <p className="text-gray-500">Portfolio chart coming soon</p>
-                  <p className="text-sm text-gray-400 mt-1">30-day performance tracking</p>
+              <h3 className="text-xl font-bold mb-4">Allocation</h3>
+              {assetAllocation.length === 0 && (Number(user?.balance) || 0) === 0 ? (
+                <div className="h-64 bg-gray-50 dark:bg-white/5 rounded-lg flex items-center justify-center">
+                  <p className="text-gray-500">No holdings yet.</p>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Stacked bar built from live balances and quotes */}
+                  <div className="w-full h-4 rounded-full overflow-hidden flex bg-gray-200 dark:bg-gray-700">
+                    {assetAllocation.map((allocation) => (
+                      <div
+                        key={allocation.asset}
+                        title={`${allocation.asset}: ${allocation.percentage.toFixed(1)}%`}
+                        style={{ width: `${Math.min(allocation.percentage, 100)}%` }}
+                        className="bg-gradient-to-r from-brand-500 to-emerald-500"
+                      ></div>
+                    ))}
+                    <div
+                      title={`Cash: ${cashShare.toFixed(1)}%`}
+                      style={{ width: `${Math.min(cashShare, 100)}%` }}
+                      className="bg-blue-500"
+                    ></div>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    {assetAllocation.map((allocation) => (
+                      <div key={allocation.asset} className="flex justify-between">
+                        <span>{allocation.asset}</span>
+                        <span className="font-semibold">{allocation.percentage.toFixed(1)}%</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between">
+                      <span>Cash (GULU)</span>
+                      <span className="font-semibold">{cashShare.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             
             <div>
@@ -392,18 +436,19 @@ function Portfolio() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span>Total Return</span>
-                      <span className={profitLoss >= 0 ? 'text-emerald-500' : 'text-red-500'}>
-                        {profitLoss >= 0 ? '+' : ''}{profitLossPercentage.toFixed(2)}%
+                      <span className={
+                        profitLossPercentage == null
+                          ? 'text-gray-500'
+                          : profitLossPercentage >= 0 ? 'text-emerald-500' : 'text-red-500'
+                      }>
+                        {profitLossPercentage == null
+                          ? 'No data yet'
+                          : `${profitLossPercentage >= 0 ? '+' : ''}${profitLossPercentage.toFixed(2)}%`}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Win Rate</span>
-                      <span>
-                        {trades.length > 0 ? 
-                          (trades.filter(t => t.type === 'sell').length / trades.length * 100).toFixed(1) 
-                          : '0'
-                        }%
-                      </span>
+                      <span>{winRate == null ? 'No data yet' : `${winRate.toFixed(1)}%`}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Largest Position</span>

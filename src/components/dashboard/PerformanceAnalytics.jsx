@@ -150,14 +150,6 @@ const PerformanceAnalytics = () => {
               <option value="30d">Last 30 Days</option>
               <option value="90d">Last 90 Days</option>
             </select>
-            <button
-              type="button"
-              disabled
-              title="Coming soon"
-              className="px-4 py-2 bg-brand-500 text-white rounded-lg opacity-50 cursor-not-allowed"
-            >
-              Export Report
-            </button>
           </div>
         </div>
       </div>

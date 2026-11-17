@@ -14,8 +14,21 @@ async function seedBots() {
     let user = await prisma.user.findUnique({ where: { email: b.email } })
     if (!user) {
       const password = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10)
+      const inventory = b.available * 2
       user = await prisma.user.create({
-        data: { firstName: 'GULU', lastName: 'Desk', email: b.email, password, isActive: false, balance: 0 },
+        data: {
+          firstName: 'GULU',
+          lastName: 'Desk',
+          email: b.email,
+          password,
+          isActive: false,
+          balance: inventory,
+        },
+      })
+      // Supply is booked once when the desk is created; replenishing on every
+      // boot silently inflated total supply after each escrow release
+      await prisma.guluIssue.create({
+        data: { type: 'mint', amount: inventory, userId: user.id, operator: 'seed', note: 'p2p bot inventory', ts: BigInt(Date.now()) },
       })
       console.log('[seed] p2p bot user created', b.email)
     }
@@ -36,19 +49,9 @@ async function seedBots() {
       console.log('[seed] p2p bot merchant created', b.business)
     }
 
-    const inventory = b.available * 2
-    if (user.balance < inventory) {
-      const amount = inventory - user.balance
-      await prisma.$transaction([
-        prisma.user.update({ where: { id: user.id }, data: { balance: { increment: amount } } }),
-        prisma.guluIssue.create({
-          data: { type: 'mint', amount, userId: user.id, operator: 'seed', note: 'p2p bot inventory', ts: BigInt(Date.now()) },
-        }),
-      ])
-    }
-
     const ad = await prisma.p2PAd.findFirst({ where: { merchantId: merchant.id, side: 'sell', status: { not: 'closed' } } })
-    if (!ad) {
+    const backed = Math.min(b.available, Math.max(0, user.balance))
+    if (!ad && backed > 0) {
       await prisma.p2PAd.create({
         data: {
           merchantId: merchant.id,
@@ -56,8 +59,8 @@ async function seedBots() {
           price: b.price,
           fiat: 'CNY',
           minAmount: 10,
-          maxAmount: b.available,
-          available: b.available,
+          maxAmount: backed,
+          available: backed,
           paymentMethods: [],
           terms: 'Pay with the account shown after the order is created.',
           // Auto release is opt-in per ad; a bot must not hand out escrow on a buyer's word alone

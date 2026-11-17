@@ -183,6 +183,36 @@ router.patch('/p2p/ads/:id', authenticateToken, requireAdmin, async (req, res, n
     if (maxAmount != null && num(maxAmount) > 0) data.maxAmount = num(maxAmount)
     if (available != null && num(available) >= 0) data.available = num(available)
 
+    const existing = await prisma.p2PAd.findUnique({
+      where: { id: req.params.id },
+      include: { merchant: { include: { user: true } } },
+    })
+    if (!existing) return res.status(404).json({ success: false, error: 'Ad not found' })
+
+    const finalMin = data.minAmount != null ? data.minAmount : existing.minAmount
+    const finalMax = data.maxAmount != null ? data.maxAmount : existing.maxAmount
+    if (!(finalMax >= finalMin)) {
+      return res.status(400).json({ success: false, error: 'max amount must be greater than or equal to min amount' })
+    }
+
+    // A sell ad is a promise to deliver escrow; raising its depth beyond the
+    // merchant's free balance would create liquidity that cannot settle
+    if (data.available != null && existing.side === 'sell') {
+      const open = await prisma.p2PAd.aggregate({
+        where: {
+          merchantId: existing.merchantId,
+          side: 'sell',
+          status: { in: ['active', 'paused'] },
+          id: { not: existing.id },
+        },
+        _sum: { available: true },
+      })
+      const committed = open._sum.available || 0
+      if (existing.merchant.user.balance + 1e-9 < committed + data.available) {
+        return res.status(400).json({ success: false, error: 'Available exceeds merchant GULU balance' })
+      }
+    }
+
     const ad = await prisma.p2PAd.update({ where: { id: req.params.id }, data, include: { merchant: true } })
     res.json({ success: true, ad })
   } catch (e) {

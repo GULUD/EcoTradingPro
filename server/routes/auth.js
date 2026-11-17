@@ -137,13 +137,14 @@ router.post('/user/login', authLimiter, async (req, res, next) => {
       recordFailure(acct)
       return res.status(401).json({ success: false, error: 'Invalid credentials' })
     }
-    if (!user.isActive) {
-      return res.status(401).json({ success: false, error: 'Account has been suspended' })
-    }
     if (!(await bcrypt.compare(password, user.password))) {
       recordFailure(pair)
       recordFailure(acct)
       return res.status(401).json({ success: false, error: 'Invalid credentials' })
+    }
+    // Only reveal the suspension to someone who proved ownership of the password
+    if (!user.isActive) {
+      return res.status(401).json({ success: false, error: 'Account has been suspended' })
     }
 
     clearFailures(pair)
@@ -178,13 +179,14 @@ router.post('/admin/login', authLimiter, async (req, res, next) => {
       recordFailure(acct)
       return res.status(401).json({ success: false, error: 'Invalid admin credentials' })
     }
-    if (!admin.isActive) {
-      return res.status(401).json({ success: false, error: 'Admin account has been suspended' })
-    }
     if (!(await bcrypt.compare(password, admin.password))) {
       recordFailure(pair)
       recordFailure(acct)
       return res.status(401).json({ success: false, error: 'Invalid admin credentials' })
+    }
+    // Only reveal the suspension to someone who proved ownership of the password
+    if (!admin.isActive) {
+      return res.status(401).json({ success: false, error: 'Admin account has been suspended' })
     }
 
     clearFailures(pair)
