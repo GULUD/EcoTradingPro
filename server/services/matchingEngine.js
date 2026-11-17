@@ -524,11 +524,11 @@ const TF_MS = {
   '4h': 4 * 60 * 60 * 1000,
   '1d': 24 * 60 * 60 * 1000,
   '1w': 7 * 24 * 60 * 60 * 1000,
-  // Explicit windows for the dashboard buttons; without these "1M" fell back
-  // to a minute chart and "1Y" silently became one hour
-  '60m': 60 * 60 * 1000,
-  '30d': 30 * 24 * 60 * 60 * 1000,
-  '1y': 365 * 24 * 60 * 60 * 1000,
+  // Window keys for the dashboard buttons. The step is the candle size, not the
+  // window length: using 30-day candles made "1M" span 900 days and "1Y" 52 years
+  '60m': 60 * 1000,
+  '30d': 24 * 60 * 60 * 1000,
+  '1y': 7 * 24 * 60 * 60 * 1000,
 }
 const TF_BUCKETS = {
   '1m': 120,

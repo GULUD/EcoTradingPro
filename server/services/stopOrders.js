@@ -53,8 +53,9 @@ async function triggerStopOrders(io) {
     })
     if (!claimed.count) continue
 
+    let executed = 0
     try {
-      await executeOrder(
+      const result = await executeOrder(
         {
           userId: stop.userId,
           symbol: stop.symbol,
@@ -69,6 +70,7 @@ async function triggerStopOrders(io) {
         },
         io
       )
+      executed = result.order.filled
     } catch (e) {
       // Funds or holdings moved away while the order was armed. Cancel instead of
       // retrying forever, and let the owner know through the socket.
@@ -84,12 +86,14 @@ async function triggerStopOrders(io) {
       continue
     }
 
-    // The schedule fired; without a terminal status the stale sweep would later
-    // cancel a stop that actually executed and the history would be misleading
-    await prisma.order.update({ where: { id: stop.id }, data: { status: 'filled' } })
+    // A fired stop can execute only part of its size when the book runs out. The
+    // schedule row must record what actually traded, and it will never fire again.
+    const done = executed >= stop.size - 1e-9
+    const finalStatus = done ? 'filled' : 'canceled'
+    await prisma.order.update({ where: { id: stop.id }, data: { filled: executed, status: finalStatus } })
 
     if (io && stop.userId) {
-      io.to(`user-${stop.userId}`).emit('order:update', { orderId: stop.id, status: 'filled' })
+      io.to(`user-${stop.userId}`).emit('order:update', { orderId: stop.id, status: finalStatus })
     }
   }
 }

@@ -108,7 +108,8 @@ function NewsManagement() {
       resetForm()
       fetchNews()
     } catch (error) {
-      setMessage(error.response?.data?.error || 'Operation failed')
+      // The admin API reports validation failures in `message`
+      setMessage(error.response?.data?.message || error.response?.data?.error || 'Operation failed')
     }
   }
 
@@ -137,7 +138,7 @@ function NewsManagement() {
       setMessage('News deleted successfully')
       fetchNews()
     } catch (error) {
-      setMessage('Failed to delete news')
+      setMessage(error.response?.data?.message || 'Failed to delete news')
     }
   }
 
@@ -152,7 +153,7 @@ function NewsManagement() {
       setMessage(`News ${!currentStatus ? 'published' : 'unpublished'} successfully`)
       fetchNews()
     } catch (error) {
-      setMessage('Failed to update publish status')
+      setMessage(error.response?.data?.message || 'Failed to update publish status')
     }
   }
 

@@ -319,6 +319,11 @@ router.post('/orders', authenticateToken, requireUser, async (req, res, next) =>
       if (!ad || ad.status !== 'active') return fail(400, 'Ad is not available')
       if (ad.merchant.status !== 'approved') return fail(400, 'Merchant is not active')
       if (ad.merchant.userId === req.user.id) return fail(400, 'Cannot trade with yourself')
+      // Ads without a payout account are hidden from the market; ordering one by id
+      // would escrow GULU that the buyer has no way to pay for
+      if (!methodsOf(ad.paymentMethods).length) {
+        return fail(400, 'Ad has no payment method configured')
+      }
 
       const fiatAmount = +(gulu * ad.price).toFixed(2)
       if (fiatAmount < ad.minAmount || fiatAmount > ad.maxAmount) {
