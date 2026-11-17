@@ -65,7 +65,10 @@ async function tick(io) {
       const drift = Math.abs(o.price - center) / center
       const age = now - o.createdAt.getTime()
       const remaining = o.size - o.filled
-      if (drift > MAX_DRIFT || age > MAX_AGE_MS || remaining <= o.size * 0.15) stale.push(o)
+      // A quote on the wrong side of the new centre would cross the book after a
+      // small move, so it is stale even when its drift is still inside the band
+      const wrongSide = (o.side === 'buy' && o.price >= center) || (o.side === 'sell' && o.price <= center)
+      if (wrongSide || drift > MAX_DRIFT || age > MAX_AGE_MS || remaining <= o.size * 0.15) stale.push(o)
       else alive.push(o)
     }
 
@@ -91,6 +94,10 @@ async function tick(io) {
       for (const offset of LEVELS) {
         const price = side === 'buy' ? r(center * (1 - offset), c.decimals) : r(center * (1 + offset), c.decimals)
         if (!(price > 0) || priced.has(price)) continue
+        // Coins with coarse decimals can round a level onto the centre; quoting it
+        // would collapse the spread to zero
+        if (side === 'buy' && price >= center) continue
+        if (side === 'sell' && price <= center) continue
         if (side === 'buy' && userAsk > 0 && price >= userAsk) continue
         if (side === 'sell' && userBid > 0 && price <= userBid) continue
         const notional = NOTIONAL * (0.6 + Math.random() * 0.8)

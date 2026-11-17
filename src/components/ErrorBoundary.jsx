@@ -21,7 +21,9 @@ export default class ErrorBoundary extends React.Component {
         <div className="min-h-screen flex items-center justify-center bg-[#0A0F1A] text-gray-100 p-6">
           <div className="text-center space-y-4 max-w-md">
             <h1 className="text-xl font-semibold">This page failed to load</h1>
-            <p className="text-sm text-gray-400 break-words">{this.state.error.message}</p>
+            <p className="text-sm text-gray-400">
+              An unexpected error occurred. Reload to continue; the details are in the browser console.
+            </p>
             <button
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium"
               onClick={() => window.location.reload()}
