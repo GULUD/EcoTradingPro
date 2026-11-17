@@ -88,6 +88,10 @@ function P2P() {
   const [payRef, setPayRef] = useState('')
   const [payError, setPayError] = useState('')
 
+  const [reasonDialog, setReasonDialog] = useState(null)
+  const [reasonText, setReasonText] = useState('')
+  const [reasonError, setReasonError] = useState('')
+
   const loadProfile = async () => {
     try {
       const response = await axios.get('/api/users/profile')
@@ -323,25 +327,31 @@ function P2P() {
     })
   }
 
-  const cancelOrder = (order) => {
-    const reason = window.prompt('Reason for cancelling this order')
-    if (reason === null) return
+  const openReasonDialog = (order, action) => {
+    setReasonDialog({ order, action })
+    setReasonText('')
+    setReasonError('')
+  }
+
+  const submitReason = () => {
+    if (!reasonDialog) return
+    const reason = reasonText.trim()
+    if (!reason) {
+      setReasonError('Enter a reason')
+      return
+    }
+    const { order, action } = reasonDialog
     run(async () => {
-      await axios.post(`/api/p2p/orders/${order.id}/cancel`, { reason })
-      setNotice('Order cancelled')
+      await axios.post(`/api/p2p/orders/${order.id}/${action}`, { reason })
+      setReasonDialog(null)
+      setNotice(action === 'cancel' ? 'Order cancelled' : 'Dispute opened')
       await refreshAll()
     })
   }
 
-  const disputeOrder = (order) => {
-    const reason = window.prompt('Describe the problem for the admin')
-    if (reason === null) return
-    run(async () => {
-      await axios.post(`/api/p2p/orders/${order.id}/dispute`, { reason })
-      setNotice('Dispute opened')
-      await refreshAll()
-    })
-  }
+  const cancelOrder = (order) => openReasonDialog(order, 'cancel')
+
+  const disputeOrder = (order) => openReasonDialog(order, 'dispute')
 
   const activeAds = tab === 'buy' ? ads.sell : ads.buy
 
@@ -898,6 +908,52 @@ function P2P() {
                 </button>
                 <button onClick={() => setPayOrder(null)} className={`${GHOST} flex-1`}>
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reasonDialog && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className={`${CARD} w-full max-w-md p-6`}>
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold">
+                  {reasonDialog.action === 'cancel' ? 'Cancel order' : 'Open a dispute'}
+                </h3>
+                <p className="text-sm text-gray-500">
+                  {reasonDialog.action === 'cancel'
+                    ? 'Tell the merchant why this order is being cancelled.'
+                    : 'Describe the problem so an admin can arbitrate.'}
+                </p>
+              </div>
+              <button
+                onClick={() => setReasonDialog(null)}
+                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"
+              >
+                <i className="fas fa-times"></i>
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Reason</label>
+                <textarea
+                  value={reasonText}
+                  onChange={(e) => setReasonText(e.target.value)}
+                  className={FIELD}
+                  rows={3}
+                  placeholder="Explain the issue"
+                />
+              </div>
+              {reasonError && <p className="text-sm text-red-500">{reasonError}</p>}
+              <div className="flex gap-3">
+                <button onClick={submitReason} disabled={busy} className={`${PRIMARY} flex-1`}>
+                  Submit
+                </button>
+                <button onClick={() => setReasonDialog(null)} className={`${GHOST} flex-1`}>
+                  Back
                 </button>
               </div>
             </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, Routes, Route } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
+import { useWebSocket } from '../../contexts/WebSocketContext'
 import { API_BASE } from '../../utils/api'
 import Chart from 'chart.js/auto'
 import Portfolio from './Portfolio'
@@ -19,42 +20,26 @@ import RiskManagement from './RiskManagement'
 import PerformanceAnalytics from './PerformanceAnalytics'
 import P2P from './P2P'
 
+const CHART_TIMEFRAMES = { '1H': '1m', '1D': '15m', '1W': '1h', '1M': '4h', '1Y': '1d' }
+
+const CRYPTO_ICONS = {
+  BTC: '₿',
+  ETH: 'Ξ',
+  SOL: '◎',
+  XRP: 'X',
+  BNB: 'B',
+  ADA: '₳'
+}
+
 function UserDashboard() {
   const { user, logout } = useAuth()
-  const { isDark, toggleTheme } = useTheme()
+  const { theme, toggleTheme } = useTheme()
+  const { notifications } = useWebSocket()
   const navigate = useNavigate()
   const chartRef = useRef(null)
-  const chartInstance = useRef(null)
 
   const [activeTab, setActiveTab] = useState('buy')
   const [activeTimeFilter, setActiveTimeFilter] = useState('1W')
-  const [marketData, setMarketData] = useState({
-    'BTC/GULU': { price: 68355, change: 1.2 },
-    'ETH/GULU': { price: 3210, change: -0.4 },
-    'SOL/GULU': { price: 182.4, change: 2.1 },
-    'XRP/GULU': { price: 0.62, change: 0.7 },
-    'BNB/GULU': { price: 598.3, change: 0.9 },
-    'ADA/GULU': { price: 0.52, change: -0.3 }
-  })
-
-  // Fetch market data
-  const fetchMarketData = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/api/market/prices`)
-      const data = await response.json()
-      setMarketData(data)
-    } catch (error) {
-      console.error('Error fetching market data:', error)
-    }
-  }
-
-  const [portfolioData, setPortfolioData] = useState({
-    totalValue: 42689.24,
-    dailyChange: 1280.50,
-    dailyChangePercent: 3.1,
-    activeOrders: 12
-  })
-
   const [tradeForm, setTradeForm] = useState({
     asset: 'BTC',
     amount: 500.00,
@@ -62,79 +47,7 @@ function UserDashboard() {
   })
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-
-  useEffect(() => {
-    // Fetch initial market data
-    fetchMarketData()
-
-    // Set up periodic updates every 30 seconds
-    const marketInterval = setInterval(fetchMarketData, 30000)
-
-    // Initialize chart
-    if (chartRef.current) {
-      const ctx = chartRef.current.getContext('2d')
-
-      if (chartInstance.current) {
-        chartInstance.current.destroy()
-      }
-
-      chartInstance.current = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: [],
-          datasets: [{
-            label: 'BTC/GULU',
-            data: [],
-            borderColor: '#10B981',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            borderWidth: 3,
-            pointRadius: 0,
-            fill: true,
-            tension: 0.4
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              display: false
-            }
-          },
-          scales: {
-            y: {
-              grid: {
-                color: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
-              },
-              ticks: {
-                color: '#94a3b8',
-                callback: function(value) {
-                  return '$' + value.toLocaleString()
-                }
-              }
-            },
-            x: {
-              grid: {
-                display: false
-              },
-              ticks: {
-                color: '#94a3b8'
-              }
-            }
-          }
-        }
-      })
-    }
-
-    fetchChartData(activeTimeFilter)
-
-    return () => {
-      if (chartInstance.current) {
-        chartInstance.current.destroy()
-      }
-      clearInterval(marketInterval)
-    }
-  }, [isDark])
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   const handleLogout = async () => {
     await logout()
@@ -145,49 +58,29 @@ function UserDashboard() {
     setTradeForm(prev => ({ ...prev, [field]: value }))
   }
 
-  const CHART_TIMEFRAMES = { '1H': '1m', '1D': '15m', '1W': '1h', '1M': '4h', '1Y': '1d' }
-
-  const fetchChartData = async (filter) => {
-    try {
-      const timeframe = CHART_TIMEFRAMES[filter] || '1h'
-      const response = await fetch(`${API_BASE}/api/market/chart/BTC?timeframe=${timeframe}`)
-      const payload = await response.json()
-      const candles = payload.ohlcv || []
-      if (!chartInstance.current) return
-      chartInstance.current.data.labels = candles.map((c) => new Date(c.timestamp).toLocaleString())
-      chartInstance.current.data.datasets[0].data = candles.map((c) => c.close)
-      chartInstance.current.update()
-    } catch (error) {
-      console.error('[dashboard] chart fetch failed', error.message)
-    }
-  }
-
   const handleTimeFilterChange = (filter) => {
     setActiveTimeFilter(filter)
-    fetchChartData(filter)
   }
 
-  const cryptoIcons = {
-    'BTC': '₿',
-    'ETH': 'Ξ',
-    'SOL': '◎',
-    'XRP': 'X',
-    'BNB': 'B',
-    'ADA': '₳'
-  }
-
-  // Placeholder for unread count, assuming it comes from notifications system
-  const unreadCount = 3;
+  const unreadCount = notifications.length
 
   return (
     <div className="bg-white text-gray-900 dark:bg-[#0A0F1A] dark:text-gray-100 min-h-screen">
       <div className="flex min-h-screen">
+        {/* Mobile drawer overlay */}
+        {mobileSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+        )}
+
         {/* Sidebar */}
-        <div className={`${sidebarCollapsed ? 'w-20' : 'w-72'} bg-white/90 dark:bg-[#0F172A]/85 backdrop-blur-lg border-r border-gray-200 dark:border-gray-800 transition-all duration-300 fixed h-full z-50`}>
+        <div className={`fixed inset-y-0 left-0 z-50 ${sidebarCollapsed ? 'w-72 lg:w-20' : 'w-72'} bg-white/90 dark:bg-[#0F172A]/85 backdrop-blur-lg border-r border-gray-200 dark:border-gray-800 transition-all duration-300 transform ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
           <div className="p-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 flex items-center justify-center text-white font-bold">
-                {sidebarCollapsed ? 'C' : '📊'}
+                C
               </div>
               {!sidebarCollapsed && (
                 <div className="text-xl font-extrabold">
@@ -197,7 +90,7 @@ function UserDashboard() {
             </div>
           </div>
 
-          <nav className="px-4">
+          <nav className="px-4" onClick={() => setMobileSidebarOpen(false)}>
             <Link to="/dashboard" className="flex items-center gap-4 px-4 py-3 rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400 border-l-4 border-brand-500 mb-2">
               <i className="fas fa-home text-lg"></i>
               {!sidebarCollapsed && <span>Dashboard</span>}
@@ -263,46 +156,54 @@ function UserDashboard() {
         </div>
 
         {/* Main Content */}
-        <div className={`flex-1 ${sidebarCollapsed ? 'ml-20' : 'ml-72'} transition-all duration-300`}>
+        <div className={`flex-1 min-w-0 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-72'} transition-all duration-300`}>
           {/* Top Bar */}
-          <header className="bg-white/90 dark:bg-[#0F172A]/90 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800 p-6">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-4">
+          <header className="bg-white/90 dark:bg-[#0F172A]/90 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800 p-4 lg:p-6">
+            <div className="flex justify-between items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 <button
-                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5"
+                  onClick={() => setMobileSidebarOpen(true)}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 lg:hidden"
                 >
                   <i className="fas fa-bars"></i>
                 </button>
-                <div className="relative">
+                <button
+                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  className="hidden lg:block p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5"
+                >
+                  <i className="fas fa-bars"></i>
+                </button>
+                <div className="relative hidden sm:block">
                   <input
                     type="text"
                     placeholder="Search cryptocurrencies..."
-                    className="w-80 px-4 py-2 pl-10 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    className="w-56 lg:w-80 px-4 py-2 pl-10 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />
                   <i className="fas fa-search absolute left-3 top-3 text-gray-400"></i>
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 lg:gap-4">
                 <button
                   onClick={toggleTheme}
                   className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5"
                 >
-                  <i className={`fas ${isDark ? 'fa-sun' : 'fa-moon'}`}></i>
+                  <i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`}></i>
                 </button>
                 <button className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 relative">
                   <i className="fas fa-bell"></i>
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                    {unreadCount}
-                  </span>
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  )}
                 </button>
 
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-500 to-emerald-500 flex items-center justify-center text-white font-bold">
                     {user?.firstName?.[0]}{user?.lastName?.[0]}
                   </div>
-                  <div>
+                  <div className="hidden md:block">
                     <div className="font-semibold">{user?.firstName} {user?.lastName}</div>
                     <div className="text-sm text-gray-500">Pro Trader</div>
                   </div>
@@ -318,7 +219,7 @@ function UserDashboard() {
           </header>
 
           {/* Dashboard Content */}
-          <main className="p-6">
+          <main className="p-4 lg:p-6">
             <Routes>
               <Route
                 path="/"
@@ -373,33 +274,183 @@ function DashboardHome({
   onTradeFormChange,
 }) {
   const { user } = useAuth()
-  const [portfolioData, setPortfolioData] = useState({
-    totalValue: 42689.24,
-    dailyChange: 1280.50,
-    dailyChangePercent: 3.1,
-    activeOrders: 12
-  })
-  const [marketData, setMarketData] = useState({
-    'BTC/GULU': { price: 68355, change: 1.2 },
-    'ETH/GULU': { price: 3210, change: -0.4 },
-    'SOL/GULU': { price: 182.4, change: 2.1 },
-    'XRP/GULU': { price: 0.62, change: 0.7 },
-    'BNB/GULU': { price: 598.3, change: 0.9 },
-    'ADA/GULU': { price: 0.52, change: -0.3 }
+  const { theme } = useTheme()
+  const { notifications } = useWebSocket()
+  const [profile, setProfile] = useState({ balance: 0, portfolio: {} })
+  const [marketData, setMarketData] = useState({})
+  const [openOrders, setOpenOrders] = useState([])
+  const [activeView, setActiveView] = useState('analytics') // State for the tab selection within dashboard home content
+  const chartInstance = useRef(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadMarket = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/market/prices`)
+        if (!response.ok) return
+        const payload = await response.json()
+        if (cancelled || !payload || typeof payload !== 'object') return
+
+        const next = {}
+        Object.entries(payload).forEach(([pair, item]) => {
+          const price = Number(item?.price)
+          if (!Number.isFinite(price)) return
+          const change = Number(item?.change24h ?? item?.change)
+          next[pair] = { price, change: Number.isFinite(change) ? change : 0 }
+        })
+        // Only replace the table when the payload parsed into usable numbers
+        if (Object.keys(next).length) setMarketData(next)
+      } catch (error) {
+        console.error('[dashboard] market fetch failed', error.message)
+      }
+    }
+
+    loadMarket()
+    const timer = setInterval(loadMarket, 30000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    // /api/auth/me omits portfolio, so balances and holdings come from the profile endpoint
+    const loadAccount = async () => {
+      const token = localStorage.getItem('token')
+      if (!token) return
+      try {
+        const headers = { Authorization: `Bearer ${token}` }
+        const [profileResponse, ordersResponse] = await Promise.all([
+          fetch(`${API_BASE}/api/users/profile`, { headers }),
+          fetch(`${API_BASE}/api/users/orders`, { headers }),
+        ])
+        const profilePayload = profileResponse.ok ? await profileResponse.json() : null
+        const ordersPayload = ordersResponse.ok ? await ordersResponse.json() : null
+        if (cancelled) return
+
+        if (profilePayload) {
+          setProfile({
+            balance: Number(profilePayload.balance) || 0,
+            portfolio: profilePayload.portfolio || {},
+          })
+        }
+        if (Array.isArray(ordersPayload)) setOpenOrders(ordersPayload)
+      } catch (error) {
+        console.error('[dashboard] account fetch failed', error.message)
+      }
+    }
+
+    loadAccount()
+    const timer = setInterval(loadAccount, 30000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [])
+
+  // The canvas only exists while this view renders, so creation and teardown follow the view
+  useEffect(() => {
+    if (activeView !== 'analytics') return
+    const canvas = chartRef.current
+    if (!canvas) return
+
+    const chart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'BTC/GULU',
+          data: [],
+          borderColor: '#10B981',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          borderWidth: 3,
+          pointRadius: 0,
+          fill: true,
+          tension: 0.4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: false
+          }
+        },
+        scales: {
+          y: {
+            grid: {
+              color: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+            },
+            ticks: {
+              color: '#94a3b8',
+              callback: function(value) {
+                return '$' + value.toLocaleString()
+              }
+            }
+          },
+          x: {
+            grid: {
+              display: false
+            },
+            ticks: {
+              color: '#94a3b8'
+            }
+          }
+        }
+      }
+    })
+    chartInstance.current = chart
+
+    let cancelled = false
+    const loadChart = async () => {
+      try {
+        const timeframe = CHART_TIMEFRAMES[activeTimeFilter] || '1h'
+        const response = await fetch(`${API_BASE}/api/market/chart/BTC?timeframe=${timeframe}`)
+        if (!response.ok) return
+        const payload = await response.json()
+        if (cancelled || chartInstance.current !== chart) return
+        const candles = Array.isArray(payload?.ohlcv) ? payload.ohlcv : []
+        chart.data.labels = candles.map((c) => new Date(c.timestamp).toLocaleString())
+        chart.data.datasets[0].data = candles.map((c) => Number(c.close))
+        chart.update()
+      } catch (error) {
+        console.error('[dashboard] chart fetch failed', error.message)
+      }
+    }
+    loadChart()
+
+    return () => {
+      cancelled = true
+      if (chartInstance.current === chart) chartInstance.current = null
+      chart.destroy()
+    }
+  }, [theme, activeTimeFilter, activeView, chartRef])
+
+  let holdingsValue = 0
+  let dailyChange = 0
+  Object.entries(profile.portfolio || {}).forEach(([asset, rawQuantity]) => {
+    const quantity = Number(rawQuantity)
+    const quote = marketData[`${asset}/GULU`]
+    const price = Number(quote?.price)
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price)) return
+    const value = quantity * price
+    const change = Number(quote?.change) || 0
+    holdingsValue += value
+    dailyChange += (value * change) / 100
   })
 
-  const cryptoIcons = {
-    'BTC': '₿',
-    'ETH': 'Ξ',
-    'SOL': '◎',
-    'XRP': 'X',
-    'BNB': 'B',
-    'ADA': '₳'
-  }
+  const totalValue = (Number(profile.balance) || 0) + holdingsValue
+  const previousValue = totalValue - dailyChange
+  const dailyChangePercent = previousValue > 0 ? (dailyChange / previousValue) * 100 : 0
+  const unreadCount = notifications.length
 
-  // Placeholder for unread count, assuming it comes from notifications system
-  const unreadCount = 3;
-  const [activeView, setActiveView] = useState('analytics'); // State for the tab selection within dashboard home content
+  const tradePair = `${tradeForm.asset}/GULU`
+  const tradePrice = Number(marketData[tradePair]?.price) || 0
+  const tradeQuantity = tradePrice > 0 ? (Number(tradeForm.amount) || 0) / tradePrice : 0
 
   return (
     <>
@@ -456,9 +507,9 @@ function DashboardHome({
           Competitions
         </button>
         <button
-          onClick={() => setActiveView('history')}
+          onClick={() => setActiveView('order-history')}
           className={`px-4 py-2 rounded-lg transition ${
-            activeView === 'history'
+            activeView === 'order-history'
               ? 'bg-brand-500 text-white'
               : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
           }`}
@@ -536,10 +587,13 @@ function DashboardHome({
                   <i className="fas fa-wallet text-brand-500"></i>
                 </div>
               </div>
-              <div className="text-3xl font-bold mb-2">${portfolioData.totalValue.toLocaleString()}</div>
-              <div className="text-emerald-500 text-sm font-medium">
-                <i className="fas fa-arrow-up mr-1"></i>
-                +{portfolioData.dailyChangePercent}% (${portfolioData.dailyChange.toLocaleString()})
+              <div className="text-3xl font-bold mb-2">
+                ${totalValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </div>
+              <div className={`text-sm font-medium ${dailyChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                <i className={`fas ${dailyChange >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'} mr-1`}></i>
+                {dailyChange >= 0 ? '+' : '-'}${Math.abs(dailyChange).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                {' '}({dailyChangePercent >= 0 ? '+' : ''}{dailyChangePercent.toFixed(2)}%)
               </div>
             </div>
 
@@ -552,7 +606,9 @@ function DashboardHome({
                   <i className="fas fa-dollar-sign text-emerald-500"></i>
                 </div>
               </div>
-              <div className="text-3xl font-bold mb-2">${user?.balance?.toLocaleString() || '0.00'}</div>
+              <div className="text-3xl font-bold mb-2">
+                ${(Number(profile.balance) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </div>
               <div className="text-gray-500 text-sm">Account Balance</div>
             </div>
 
@@ -565,10 +621,12 @@ function DashboardHome({
                   <i className="fas fa-chart-line text-brand-500"></i>
                 </div>
               </div>
-              <div className="text-3xl font-bold mb-2 text-emerald-500">+$1,280.50</div>
-              <div className="text-emerald-500 text-sm font-medium">
-                <i className="fas fa-arrow-up mr-1"></i>
-                +3.1% Today
+              <div className={`text-3xl font-bold mb-2 ${dailyChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                {dailyChange >= 0 ? '+' : '-'}${Math.abs(dailyChange).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </div>
+              <div className={`text-sm font-medium ${dailyChange >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                <i className={`fas ${dailyChange >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'} mr-1`}></i>
+                {dailyChangePercent >= 0 ? '+' : ''}{dailyChangePercent.toFixed(2)}% Today
               </div>
             </div>
 
@@ -581,8 +639,10 @@ function DashboardHome({
                   <i className="fas fa-exchange-alt text-brand-500"></i>
                 </div>
               </div>
-              <div className="text-3xl font-bold mb-2">{portfolioData.activeOrders}</div>
-              <div className="text-gray-500 text-sm">5 Open | 7 Completed</div>
+              <div className="text-3xl font-bold mb-2">{openOrders.length}</div>
+              <div className="text-gray-500 text-sm">
+                {openOrders.length === 0 ? 'No open orders' : 'Waiting to fill or cancel'}
+              </div>
             </div>
           </div>
 
@@ -591,7 +651,7 @@ function DashboardHome({
             {/* Chart */}
             <div className="lg:col-span-2 glass rounded-2xl p-6">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold">BTC/USD Chart</h3>
+                <h3 className="text-xl font-bold">BTC/GULU Chart</h3>
                 <div className="flex gap-2">
                   {['1H', '1D', '1W', '1M', '1Y'].map((filter) => (
                     <button
@@ -608,7 +668,7 @@ function DashboardHome({
                   ))}
                 </div>
               </div>
-              <div className="h-80">
+              <div className="h-64 lg:h-80">
                 <canvas ref={chartRef}></canvas>
               </div>
             </div>
@@ -652,7 +712,7 @@ function DashboardHome({
                   <input
                     type="number"
                     value={tradeForm.amount}
-                    onChange={(e) => onTradeFormChange('amount', parseFloat(e.target.value))}
+                    onChange={(e) => onTradeFormChange('amount', e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
                     placeholder="0.00"
                   />
@@ -663,7 +723,7 @@ function DashboardHome({
                     <label className="block text-sm font-medium mb-2">Price (USD)</label>
                     <input
                       type="text"
-                      value="41,230.50"
+                      value={tradePrice ? tradePrice.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '-'}
                       className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-600"
                       readOnly
                     />
@@ -672,7 +732,7 @@ function DashboardHome({
                     <label className="block text-sm font-medium mb-2">Quantity</label>
                     <input
                       type="text"
-                      value="0.0121"
+                      value={tradeQuantity ? tradeQuantity.toFixed(6) : '-'}
                       className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-600"
                       readOnly
                     />
@@ -712,13 +772,18 @@ function DashboardHome({
             <div className="glass rounded-2xl p-6">
               <h3 className="text-xl font-bold mb-6">Top Movers</h3>
               <div className="space-y-4">
+                {Object.keys(marketData).length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-6">Live market data unavailable.</p>
+                )}
                 {Object.entries(marketData).map(([pair, data]) => {
                   const [base] = pair.split('/')
+                  const price = Number(data?.price) || 0
+                  const change = Number(data?.change) || 0
                   return (
                     <div key={pair} className="flex items-center justify-between p-4 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-500 to-emerald-500 flex items-center justify-center text-white font-bold">
-                          {cryptoIcons[base] || base[0]}
+                          {CRYPTO_ICONS[base] || base[0]}
                         </div>
                         <div>
                           <div className="font-semibold">{base}</div>
@@ -726,9 +791,11 @@ function DashboardHome({
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-semibold">${data.price.toLocaleString()}</div>
-                        <div className={`text-sm ${data.change >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                          {data.change >= 0 ? '+' : ''}{data.change}%
+                        <div className="font-semibold">
+                          ${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                        </div>
+                        <div className={`text-sm ${change >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                          {change >= 0 ? '+' : ''}{change.toFixed(2)}%
                         </div>
                       </div>
                     </div>
@@ -741,31 +808,29 @@ function DashboardHome({
             <div className="glass rounded-2xl p-6">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold">Recent Transactions</h3>
-                <Link to="/transactions" className="text-brand-500 hover:text-brand-600 text-sm font-medium">
+                <Link to="/dashboard/transactions" className="text-brand-500 hover:text-brand-600 text-sm font-medium">
                   View All
                 </Link>
               </div>
               <div className="space-y-4">
-                {[
-                  { type: 'buy', asset: 'Bitcoin', amount: '+0.25 BTC', date: 'Today, 09:42 AM', positive: true },
-                  { type: 'sell', asset: 'Ethereum', amount: '-2.5 ETH', date: 'Yesterday, 03:15 PM', positive: false },
-                  { type: 'buy', asset: 'Solana', amount: '+15.2 SOL', date: 'Dec 12, 2023', positive: true },
-                  { type: 'buy', asset: 'Cardano', amount: '+320 ADA', date: 'Dec 10, 2023', positive: true }
-                ].map((transaction, index) => (
-                  <div key={index} className="flex items-center gap-4 p-4 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition">
+                {openOrders.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-6">No open orders yet.</p>
+                )}
+                {openOrders.slice(0, 4).map((order) => (
+                  <div key={order.id} className="flex items-center gap-4 p-4 rounded-xl hover:bg-gray-50 dark:hover:bg-white/5 transition">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                      transaction.positive
+                      order.side === 'buy'
                         ? 'bg-emerald-500/10 text-emerald-500'
                         : 'bg-red-500/10 text-red-500'
                     }`}>
-                      <i className={`fas ${transaction.positive ? 'fa-arrow-down' : 'fa-arrow-up'}`}></i>
+                      <i className={`fas ${order.side === 'buy' ? 'fa-arrow-up' : 'fa-arrow-down'}`}></i>
                     </div>
                     <div className="flex-1">
-                      <div className="font-semibold">{transaction.type === 'buy' ? 'Buy' : 'Sell'} {transaction.asset}</div>
-                      <div className="text-sm text-gray-500">{transaction.date}</div>
+                      <div className="font-semibold">{(order.side || '').toUpperCase()} {order.symbol}</div>
+                      <div className="text-sm text-gray-500">{order.type} order</div>
                     </div>
-                    <div className={`font-semibold ${transaction.positive ? 'text-emerald-500' : 'text-red-500'}`}>
-                      {transaction.amount}
+                    <div className="font-semibold text-right">
+                      {Number(order.remaining) || 0} @ ${Number(order.price) || 0}
                     </div>
                   </div>
                 ))}

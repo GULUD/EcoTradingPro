@@ -1,51 +1,85 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useWebSocket } from '../../contexts/WebSocketContext'
 import axios from '../../utils/axios'
 
 const FEE_RATE = 0.001
 
 function Trading() {
   const { user, updateUser } = useAuth()
+  const { marketData: liveMarketData } = useWebSocket()
   const [orderType, setOrderType] = useState('limit')
   const [tradeType, setTradeType] = useState('buy')
   const [selectedAsset, setSelectedAsset] = useState('BTC')
   const [amount, setAmount] = useState('')
   const [price, setPrice] = useState('')
-  const [marketPrices, setMarketPrices] = useState({})
+  const [priceSnapshot, setPriceSnapshot] = useState({})
+  const [account, setAccount] = useState({ balance: 0, portfolio: {} })
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [] })
   const [recentTrades, setRecentTrades] = useState([])
   const [openOrders, setOpenOrders] = useState([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const assetRef = useRef(selectedAsset)
-  const typeRef = useRef(orderType)
 
   const assets = ['BTC', 'ETH', 'SOL', 'ADA', 'XRP', 'BNB', 'MATIC', 'DOT', 'LINK', 'UNI']
 
   assetRef.current = selectedAsset
-  typeRef.current = orderType
 
+  const prices = { ...priceSnapshot, ...liveMarketData }
   const pair = `${selectedAsset}/GULU`
-  const lastPrice = marketPrices[pair]?.price || 0
-  const held = Number(user?.portfolio?.[selectedAsset] || 0)
+  const lastPrice = Number(prices[pair]?.price) || 0
+  const balance = Number(account.balance) || 0
+  const held = Number(account.portfolio?.[selectedAsset] || 0)
 
   useEffect(() => {
-    refresh()
-    const timer = setInterval(refresh, 3000)
+    // /api/auth/me has no portfolio, so holdings must come from the profile endpoint
+    loadProfile()
+    fetchMarketPrices()
+    const poll = () => {
+      fetchOrderBook()
+      fetchRecentTrades()
+      fetchOpenOrders()
+    }
+    poll()
+    // Prices stream over the socket; the book and tape only need a slow poll
+    const timer = setInterval(poll, 8000)
     return () => clearInterval(timer)
   }, [selectedAsset])
 
+  useEffect(() => {
+    if (orderType === 'market' && lastPrice > 0) setPrice(String(lastPrice))
+  }, [orderType, lastPrice])
+
+  // Socket-driven profile refreshes land on the auth user; keep the local account in sync
+  useEffect(() => {
+    if (!user) return
+    setAccount((prev) => ({
+      balance: user.balance ?? prev.balance,
+      portfolio: user.portfolio || prev.portfolio,
+    }))
+  }, [user?.balance, user?.portfolio])
+
+  const loadProfile = async () => {
+    try {
+      const response = await axios.get('/api/users/profile')
+      setAccount({
+        balance: Number(response.data?.balance) || 0,
+        portfolio: response.data?.portfolio || {},
+      })
+    } catch (error) {
+      console.error('[trading] profile fetch failed', error.message)
+    }
+  }
+
   const refresh = async () => {
-    await Promise.all([fetchMarketPrices(), fetchOrderBook(), fetchRecentTrades(), fetchOpenOrders()])
+    await Promise.all([loadProfile(), fetchOrderBook(), fetchRecentTrades(), fetchOpenOrders()])
   }
 
   const fetchMarketPrices = async () => {
     try {
       const response = await axios.get('/api/market/prices')
-      setMarketPrices(response.data)
-      const symbol = assetRef.current
-      const px = response.data[`${symbol}/GULU`]?.price
-      if (px && typeRef.current === 'market') setPrice(String(px))
+      setPriceSnapshot(response.data || {})
     } catch (error) {
       console.error('[trading] price fetch failed', error.message)
     }
@@ -120,7 +154,7 @@ function Trading() {
       setMessage('Enter a limit price')
       return
     }
-    if (tradeType === 'buy' && value > (user?.balance || 0)) {
+    if (tradeType === 'buy' && value > balance) {
       setMessage('Insufficient balance')
       return
     }
@@ -152,6 +186,10 @@ function Trading() {
         balance: data.balance,
         portfolio: data.portfolio,
       })
+      setAccount((prev) => ({
+        balance: data.balance ?? prev.balance,
+        portfolio: data.portfolio ?? prev.portfolio,
+      }))
 
       const fills = data.fills || []
       const filled = fills.reduce((s, f) => s + f.size, 0)
@@ -180,6 +218,10 @@ function Trading() {
       const response = await axios.delete(`/api/users/orders/${orderId}`)
       if (response.data?.success) {
         updateUser({ ...user, balance: response.data.balance, portfolio: response.data.portfolio })
+        setAccount((prev) => ({
+          balance: response.data.balance ?? prev.balance,
+          portfolio: response.data.portfolio ?? prev.portfolio,
+        }))
         setMessage('Order canceled')
       }
       await refresh()
@@ -188,7 +230,7 @@ function Trading() {
     }
   }
 
-  const changePercent = marketPrices[pair]?.change || 0
+  const changePercent = Number(prices[pair]?.change ?? prices[pair]?.change24h) || 0
 
   return (
     <div className="space-y-6">
@@ -302,7 +344,7 @@ function Trading() {
                 <span>Available</span>
                 <span>
                   {tradeType === 'buy'
-                    ? `$${(user?.balance || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                    ? `$${balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
                     : `${held.toFixed(6)} ${selectedAsset}`}
                 </span>
               </div>
@@ -353,7 +395,7 @@ function Trading() {
               <div>
                 <p className="text-sm text-gray-500">24h Volume</p>
                 <p className="text-2xl font-bold">
-                  ${Number(marketPrices[pair]?.volume || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  ${Number(prices[pair]?.volume || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </p>
               </div>
             </div>

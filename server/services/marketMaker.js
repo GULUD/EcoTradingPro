@@ -28,13 +28,26 @@ async function tick(io) {
     const center = c.price > 0 ? c.price : c.manualPrice
     if (!center) continue
 
-    const all = await prisma.order.findMany({
-      where: { symbol: c.symbol, status: { in: ['open', 'partial'] } },
-      take: 400,
+    // Only house quotes are reconciled here; a truncated mixed query made dedupe fail once books grew
+    const house = await prisma.order.findMany({
+      where: { symbol: c.symbol, house: true, status: { in: ['open', 'partial'] } },
     })
-    const house = all.filter((o) => o.house)
-    const userBid = best(all.filter((o) => !o.house && o.side === 'buy'), 'max')
-    const userAsk = best(all.filter((o) => !o.house && o.side === 'sell'), 'min')
+    const userBidRow = await prisma.order.findFirst({
+      where: { symbol: c.symbol, house: false, side: 'buy', status: { in: ['open', 'partial'] } },
+      orderBy: { price: 'desc' },
+      select: { price: true },
+    })
+    const userAskRow = await prisma.order.findFirst({
+      where: { symbol: c.symbol, house: false, side: 'sell', status: { in: ['open', 'partial'] } },
+      orderBy: { price: 'asc' },
+      select: { price: true },
+    })
+    const userBid = userBidRow ? userBidRow.price : 0
+    const userAsk = userAskRow ? userAskRow.price : 0
+    const bidLevels = house.filter((o) => o.side === 'buy').map((o) => o.price)
+    const askLevels = house.filter((o) => o.side === 'sell').map((o) => o.price)
+    if (userBid > 0) bidLevels.push(userBid)
+    if (userAsk > 0) askLevels.push(userAsk)
 
     const now = Date.now()
     const stale = []
@@ -48,8 +61,8 @@ async function tick(io) {
     }
 
     // House quotes must never sit inside a user limit or cross each other
-    const bid = best(all.filter((o) => o.side === 'buy'), 'max')
-    const ask = best(all.filter((o) => o.side === 'sell'), 'min')
+    const bid = bidLevels.length ? Math.max(...bidLevels) : 0
+    const ask = askLevels.length ? Math.min(...askLevels) : 0
     const crossed = bid > 0 && ask > 0 && bid >= ask
     const bad = crossed
       ? house.filter((o) => (o.side === 'buy' && o.price >= ask) || (o.side === 'sell' && o.price <= bid))

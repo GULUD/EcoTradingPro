@@ -180,6 +180,8 @@ function AdminP2P() {
   }
 
   const reviewMerchant = (merchant, status) => {
+    const labels = { approved: 'Approve', rejected: 'Reject', suspended: 'Suspend' }
+    if (!window.confirm(`${labels[status]} ${merchant.businessName}? This immediately affects their live ads.`)) return
     run(async () => {
       const payload = { status }
       const limit = Number(limitEdits[merchant.id] ?? merchant.maxOrderGulu)
@@ -209,6 +211,7 @@ function AdminP2P() {
   const resolveOrder = (order, action) => {
     const note = action === 'cancel' ? window.prompt('Reason for cancelling this order') : ''
     if (action === 'cancel' && note === null) return
+    if (action === 'complete' && !window.confirm('Release escrow and mark this order completed?')) return
     run(async () => {
       await axios.post(`/api/admin/p2p/orders/${order.id}/resolve`, { action, note: note || undefined })
       setNotice(`Order ${action === 'complete' ? 'completed' : 'cancelled'}`)

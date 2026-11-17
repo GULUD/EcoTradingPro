@@ -102,7 +102,7 @@ router.post('/p2p/orders/:id/resolve', authenticateToken, requireAdmin, async (r
     if (!['complete', 'cancel'].includes(action)) {
       return res.status(400).json({ success: false, error: 'action must be complete or cancel' })
     }
-    const result = action === 'complete' ? await settleOrder(req.params.id, `admin ${req.user.email}`) : await refundOrder(req.params.id, `admin ${req.user.email}`, note)
+    const result = action === 'complete' ? await settleOrder(req.params.id, `admin ${req.user.email}`) : await refundOrder(req.params.id, `admin ${req.user.email}`, note, { allowPaid: true })
     if (result.reject) return res.status(result.reject.status).json({ success: false, error: result.reject.error })
 
     const full = await loadOrderFull(req.params.id)
@@ -198,11 +198,21 @@ async function recordIssue(type, userId, amount, operator, note) {
     if (!user) return { reject: { status: 404, error: 'User not found' } }
 
     const delta = type === 'mint' ? amount : -amount
-    if (type === 'burn' && user.balance < amount) {
-      return { reject: { status: 400, error: 'User balance is lower than the burn amount' } }
-    }
 
-    const updated = await tx.user.update({ where: { id: userId }, data: { balance: { increment: delta } } })
+    let updated
+    if (type === 'burn') {
+      // Conditional decrement: two concurrent burns must not drive the balance negative
+      const moved = await tx.user.updateMany({
+        where: { id: userId, balance: { gte: amount } },
+        data: { balance: { decrement: amount } },
+      })
+      if (moved.count === 0) {
+        return { reject: { status: 400, error: 'User balance is lower than the burn amount' } }
+      }
+      updated = await tx.user.findUnique({ where: { id: userId } })
+    } else {
+      updated = await tx.user.update({ where: { id: userId }, data: { balance: { increment: amount } } })
+    }
     const issue = await tx.guluIssue.create({
       data: { type, amount, userId, operator, note: note || null, ts: BigInt(Date.now()) },
     })
@@ -211,7 +221,7 @@ async function recordIssue(type, userId, amount, operator, note) {
         userId,
         type: type === 'mint' ? 'gulu_mint' : 'gulu_burn',
         amount: delta,
-        balanceBefore: user.balance,
+        balanceBefore: +(updated.balance - delta).toFixed(8),
         balanceAfter: updated.balance,
         reason: `${type} ${amount} GULU${note ? `: ${note}` : ''}`,
         operator,

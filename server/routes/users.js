@@ -66,6 +66,7 @@ function normalizeOrder(body) {
   const symbol = String(body.symbol || body.asset || '').toUpperCase().split('/')[0]
   const side = body.side || (['buy', 'sell'].includes(body.type) ? body.type : null)
   const rawType = body.orderType || body.type
+  const stop = ['stop-loss', 'stop-limit'].includes(rawType)
   const type = ['limit', 'stop-loss', 'stop-limit'].includes(rawType) ? 'limit' : 'market'
   const price = body.price != null ? +body.price : null
   let amount = body.amount != null ? +body.amount : null
@@ -74,7 +75,7 @@ function normalizeOrder(body) {
     if (side === 'buy') amount = +body.quantity * +(body.price || 0)
     else size = +body.quantity
   }
-  return { symbol, side, type, price, amount, size }
+  return { symbol, side, type, price, amount, size, stop }
 }
 
 async function placeOrder(req, res, next) {
@@ -82,6 +83,10 @@ async function placeOrder(req, res, next) {
     const payload = normalizeOrder(req.body)
     if (!payload.symbol || !['buy', 'sell'].includes(payload.side)) {
       return res.status(400).json({ success: false, error: 'symbol and side are required' })
+    }
+    // A stop order executed as a plain limit order would fire immediately at the wrong price
+    if (payload.stop) {
+      return res.status(400).json({ success: false, error: 'Stop orders are not available yet' })
     }
     const result = await executeOrder({ userId: req.user.id, ...payload }, req.app.get('io'))
     res.json({
@@ -268,13 +273,20 @@ router.post('/trading-bots', authenticateToken, requireUser, async (req, res, ne
       createdAt: new Date().toISOString(),
     }
 
-    const list = asArray(req.user.tradingBots)
-    list.push(bot)
-    // Atomic conditional debit, otherwise two parallel requests could pass the balance check above
-    const debited = await prisma.user.updateMany({
-      where: { id: req.user.id, balance: { gte: inv } },
-      data: { balance: { decrement: inv }, tradingBots: list },
-    })
+    // Re-read inside the transaction: the auth snapshot may already be stale and would
+    // resurrect bots removed by a parallel delete
+    const debited = await prisma.$transaction(
+      async (tx) => {
+        const u = await tx.user.findUnique({ where: { id: req.user.id } })
+        const list = asArray(u.tradingBots)
+        list.push(bot)
+        return tx.user.updateMany({
+          where: { id: req.user.id, balance: { gte: inv } },
+          data: { balance: { decrement: inv }, tradingBots: list },
+        })
+      },
+      { isolationLevel: 'Serializable' }
+    )
     if (debited.count === 0) {
       return res.status(400).json({ success: false, error: 'Insufficient balance' })
     }
@@ -287,13 +299,23 @@ router.post('/trading-bots', authenticateToken, requireUser, async (req, res, ne
 router.patch('/trading-bots/:botId/:action', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const { botId, action } = req.params
-    const list = asArray(req.user.tradingBots)
-    const bot = list.find((b) => b.id === botId)
-    if (!bot) return res.status(404).json({ success: false, error: 'Bot not found' })
-    if (action === 'start') bot.status = 'active'
-    else if (action === 'pause') bot.status = 'paused'
-    else return res.status(400).json({ success: false, error: 'Invalid action' })
-    await prisma.user.update({ where: { id: req.user.id }, data: { tradingBots: list } })
+    if (!['start', 'pause'].includes(action)) {
+      return res.status(400).json({ success: false, error: 'Invalid action' })
+    }
+    // Same reason as create: write the list only after re-reading it in the transaction
+    const found = await prisma.$transaction(
+      async (tx) => {
+        const u = await tx.user.findUnique({ where: { id: req.user.id } })
+        const list = asArray(u.tradingBots)
+        const bot = list.find((b) => b.id === botId)
+        if (!bot) return false
+        bot.status = action === 'start' ? 'active' : 'paused'
+        await tx.user.update({ where: { id: req.user.id }, data: { tradingBots: list } })
+        return true
+      },
+      { isolationLevel: 'Serializable' }
+    )
+    if (!found) return res.status(404).json({ success: false, error: 'Bot not found' })
     res.json({ success: true })
   } catch (e) {
     next(e)
@@ -302,18 +324,41 @@ router.patch('/trading-bots/:botId/:action', authenticateToken, requireUser, asy
 
 router.delete('/trading-bots/:botId', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    const list = asArray(req.user.tradingBots)
-    const idx = list.findIndex((b) => b.id === req.params.botId)
-    if (idx === -1) return res.status(404).json({ success: false, error: 'Bot not found' })
-    const bot = list[idx]
-    list.splice(idx, 1)
-    await prisma.user.update({
-      where: { id: req.user.id },
-      data: {
-        balance: { increment: (bot.investment || 0) + (bot.profit || 0) },
-        tradingBots: list,
-      },
-    })
+    // Refund must be tied to the removal itself; a stale read lets two concurrent deletes refund twice
+    const run = () =>
+      prisma.$transaction(
+        async (tx) => {
+          const u = await tx.user.findUnique({ where: { id: req.user.id } })
+          if (!u) return { status: 404 }
+          const list = asArray(u.tradingBots)
+          const idx = list.findIndex((b) => b.id === req.params.botId)
+          if (idx === -1) return { status: 404 }
+          const bot = list[idx]
+          await tx.user.update({
+            where: { id: req.user.id },
+            data: {
+              balance: { increment: (bot.investment || 0) + (bot.profit || 0) },
+              tradingBots: list.filter((_, i) => i !== idx),
+            },
+          })
+          return { status: 200 }
+        },
+        { isolationLevel: 'Serializable' }
+      )
+
+    let result
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        result = await run()
+        break
+      } catch (e) {
+        if (e.code === 'P2034' && attempt === 0) continue
+        throw e
+      }
+    }
+    if (!result || result.status === 404) {
+      return res.status(404).json({ success: false, error: 'Bot not found' })
+    }
     res.json({ success: true })
   } catch (e) {
     next(e)

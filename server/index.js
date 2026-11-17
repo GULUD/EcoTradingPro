@@ -19,6 +19,7 @@ const express = require('express')
 const http = require('http')
 const socketIo = require('socket.io')
 const cors = require('cors')
+const helmet = require('helmet')
 const jwt = require('jsonwebtoken')
 
 const prisma = require('./db')
@@ -35,16 +36,16 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
   .map((s) => s.trim())
   .filter(Boolean)
 
-const originCheck = (origin, cb) => {
-  if (!origin) return cb(null, true)
-  if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true)
-  if (process.env.NODE_ENV !== 'production') return cb(null, true)
-  cb(new Error(`cors rejected: ${origin}`))
+const isOriginAllowed = (origin) => {
+  if (!origin) return true
+  if (ALLOWED_ORIGINS.includes(origin)) return true
+  return process.env.NODE_ENV !== 'production'
 }
 
 const io = socketIo(server, {
   cors: {
-    origin: (origin, cb) => originCheck(origin, cb),
+    // Socket.io cannot answer with a status code; just omit the CORS headers
+    origin: (origin, cb) => cb(null, isOriginAllowed(origin)),
     credentials: true,
     methods: ['GET', 'POST'],
   },
@@ -53,15 +54,29 @@ const io = socketIo(server, {
 app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1)
 app.set('io', io)
 app.use(
+  helmet({
+    // The API is called cross-site by the Pages frontend
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+)
+app.use((req, res, next) => {
+  const origin = req.headers.origin
+  // Reject unknown origins with a plain 403 instead of throwing into the error handler
+  if (origin && !isOriginAllowed(origin)) {
+    return res.status(403).json({ success: false, error: 'origin not allowed' })
+  }
+  next()
+})
+app.use(
   cors({
-    origin: (origin, cb) => originCheck(origin, cb),
+    origin: (origin, cb) => cb(null, isOriginAllowed(origin)),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
 )
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true }))
+app.use(express.json({ limit: '100kb' }))
+app.use(express.urlencoded({ extended: true, limit: '100kb' }))
 
 // API routes first: static hosting must never swallow /api/*
 app.use('/api/auth', authRouter)
@@ -90,17 +105,22 @@ app.use(require('./middleware/errorHandler'))
 app.use((req, res) => res.status(404).json({ success: false, message: 'route not found' }))
 
 // Private rooms are derived from a verified token, never from a client-supplied id
-io.use((socket, next) => {
+io.use(async (socket, next) => {
+  socket.data.userId = null
   const token = socket.handshake.auth && socket.handshake.auth.token
-  if (token) {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
-      socket.data.userId = decoded.id
-    } catch (e) {
-      socket.data.userId = null
-    }
+  if (!token) return next()
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
+    // A valid signature is not enough: the account may have been deleted or suspended
+    const model = decoded.role === 'admin' ? prisma.admin : decoded.role === 'user' ? prisma.user : null
+    if (!model) return next()
+    const account = await model.findUnique({ where: { id: decoded.id } })
+    if (account && account.isActive) socket.data.userId = decoded.id
+    next()
+  } catch (e) {
+    // Invalid token or lookup failure: keep the socket anonymous
+    next()
   }
-  next()
 })
 
 io.on('connection', (socket) => {
@@ -128,21 +148,34 @@ server.listen(PORT, '0.0.0.0', async () => {
   }
 })
 
-const priceTimer = setInterval(() => {
-  tickPrices(io).catch((e) => console.error('[price] tick failed:', e.message))
-}, 3000)
+// Background jobs are opt-out so multi-instance deployments can run them on one node only
+const JOBS_ENABLED = process.env.RUN_JOBS !== 'false'
 
-// Keeps the venue's own quotes present on both sides of every listed market
-const bookTimer = setInterval(() => {
-  tickBook(io).catch((e) => console.error('[book] tick failed:', e.message))
-}, 6000)
+// runJob keeps every tick isolated: a rejected promise must never stop the interval
+const runJob = (name, fn) => {
+  try {
+    Promise.resolve(fn(io)).catch((e) => console.error(`[${name}] tick failed:`, e.message))
+  } catch (e) {
+    console.error(`[${name}] tick failed:`, e.message)
+  }
+}
 
-tickBook(io).catch((e) => console.error('[book] initial tick failed:', e.message))
+let priceTimer = null
+let bookTimer = null
+let p2pTimer = null
 
-// Bot merchants release escrow a few seconds after a buyer marks the order paid
-const p2pTimer = setInterval(() => {
-  autoReleaseTick(io).catch((e) => console.error('[p2p] tick failed:', e.message))
-}, 5000)
+if (JOBS_ENABLED) {
+  priceTimer = setInterval(() => runJob('price', tickPrices), 3000)
+
+  // Keeps the venue's own quotes present on both sides of every listed market
+  bookTimer = setInterval(() => runJob('book', tickBook), 6000)
+  runJob('book', tickBook)
+
+  // Bot merchants release escrow a few seconds after a buyer marks the order paid
+  p2pTimer = setInterval(() => runJob('p2p', autoReleaseTick), 5000)
+} else {
+  console.log('[jobs] background jobs disabled (RUN_JOBS=false)')
+}
 
 process.on('SIGTERM', () => {
   console.log('[boot] SIGTERM received, shutting down')

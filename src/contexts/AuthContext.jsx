@@ -36,12 +36,13 @@ export function AuthProvider({ children }) {
       if (response.ok) {
         const data = await response.json()
         setUser(data.user)
-      } else {
+      } else if (response.status === 401 || response.status === 403) {
+        // Only an explicit auth rejection invalidates the token
         localStorage.removeItem('token')
       }
     } catch (error) {
+      // Offline or cold-start errors must not log the user out; the token stays for a later retry
       console.error('Token verification failed:', error)
-      localStorage.removeItem('token')
     } finally {
       setLoading(false)
     }

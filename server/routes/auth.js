@@ -13,6 +13,48 @@ const authLimiter = rateLimit({
   message: { success: false, error: 'Too many authentication attempts, please try again later.' },
 })
 
+// Per-account lockout on top of the per-IP limiter, so rotating proxies cannot
+// slow-brute-force one account. In-memory only: resets on restart.
+const FAILURE_WINDOW_MS = 60 * 60 * 1000
+const FAILURE_MAX = 10
+const loginFailures = new Map()
+
+const failureKey = (scope, email) => `${scope}:${String(email).toLowerCase()}`
+
+function isAccountLocked(key) {
+  const record = loginFailures.get(key)
+  if (!record) return false
+  if (Date.now() - record.firstAt >= FAILURE_WINDOW_MS) {
+    loginFailures.delete(key)
+    return false
+  }
+  return record.count >= FAILURE_MAX
+}
+
+function recordFailure(key) {
+  const now = Date.now()
+  const record = loginFailures.get(key)
+  if (!record || now - record.firstAt >= FAILURE_WINDOW_MS) {
+    loginFailures.set(key, { count: 1, firstAt: now })
+  } else {
+    record.count += 1
+  }
+  // Opportunistic cleanup so unique-email floods cannot grow the map forever
+  if (loginFailures.size > 5000) {
+    for (const [k, v] of loginFailures) {
+      if (now - v.firstAt >= FAILURE_WINDOW_MS) loginFailures.delete(k)
+    }
+  }
+}
+
+const clearFailures = (key) => loginFailures.delete(key)
+
+const sendLocked = (res) =>
+  res.status(429).json({
+    success: false,
+    error: 'Too many failed attempts for this account, please try again later.',
+  })
+
 const generateToken = (id, role) =>
   jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '7d', algorithm: 'HS256' })
 
@@ -83,17 +125,23 @@ router.post('/user/login', authLimiter, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Email and password are required' })
     }
 
+    const key = failureKey('user', email)
+    if (isAccountLocked(key)) return sendLocked(res)
+
     const user = await prisma.user.findUnique({ where: { email: String(email).toLowerCase() } })
     if (!user) {
+      recordFailure(key)
       return res.status(401).json({ success: false, error: 'Invalid credentials' })
     }
     if (!user.isActive) {
       return res.status(401).json({ success: false, error: 'Account has been suspended' })
     }
     if (!(await bcrypt.compare(password, user.password))) {
+      recordFailure(key)
       return res.status(401).json({ success: false, error: 'Invalid credentials' })
     }
 
+    clearFailures(key)
     await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } })
 
     res.json({
@@ -114,17 +162,23 @@ router.post('/admin/login', authLimiter, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Email and password are required' })
     }
 
+    const key = failureKey('admin', email)
+    if (isAccountLocked(key)) return sendLocked(res)
+
     const admin = await prisma.admin.findUnique({ where: { email: String(email).toLowerCase() } })
     if (!admin) {
+      recordFailure(key)
       return res.status(401).json({ success: false, error: 'Invalid admin credentials' })
     }
     if (!admin.isActive) {
       return res.status(401).json({ success: false, error: 'Admin account has been suspended' })
     }
     if (!(await bcrypt.compare(password, admin.password))) {
+      recordFailure(key)
       return res.status(401).json({ success: false, error: 'Invalid admin credentials' })
     }
 
+    clearFailures(key)
     await prisma.admin.update({ where: { id: admin.id }, data: { lastLogin: new Date() } })
 
     res.json({

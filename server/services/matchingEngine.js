@@ -69,6 +69,14 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size },
 
   if (type === 'limit' && !(price > 0)) throw new TradeError('limit price required')
 
+  // Two self-dealt accounts could otherwise print any price and move the market reference
+  if (type === 'limit') {
+    const reference = coin.manualPrice ?? coin.price
+    if (reference > 0 && Math.abs(price / reference - 1) > 0.2) {
+      throw new TradeError('limit price is too far from the market price')
+    }
+  }
+
   // Market orders are sized against their worst allowed price, so a slightly
   // moved book still fills instead of failing on an empty top level
   const worst =
@@ -213,9 +221,9 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size },
       const status =
         remaining <= EPS ? 'filled' : type === 'market' ? 'canceled' : filled > 0 ? 'partial' : 'open'
 
-      // Unfilled market quantity is never left resting; release what was held
+      // Unfilled market quantity is never left resting; release what was held (hold used worst, so refund the same basis)
       if (remaining > EPS && type === 'market') {
-        if (side === 'buy') taker.balance = r8(taker.balance + remaining * refPrice)
+        if (side === 'buy') taker.balance = r8(taker.balance + remaining * worst)
         else taker.portfolio[symbol] = r8((Number(taker.portfolio[symbol]) || 0) + remaining)
       }
 
@@ -224,18 +232,9 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size },
       })
 
       const now = BigInt(Date.now())
-      for (const t of tradeRows) {
-        await tx.trade.create({
-          data: {
-            userId: t.userId,
-            symbol,
-            side: t.side,
-            size: t.size,
-            price: t.price,
-            pnl: 0,
-            source: 'user',
-            time: now,
-          },
+      if (tradeRows.length) {
+        await tx.trade.createMany({
+          data: tradeRows.map((t) => ({ userId: t.userId, symbol, side: t.side, size: t.size, price: t.price, pnl: 0, source: 'user', time: now })),
         })
       }
 
@@ -386,11 +385,14 @@ async function cancelOrder({ userId, orderId }, io) {
 }
 
 async function getOrderBook(symbol, depth = 20) {
-  const rows = await prisma.order.findMany({
-    where: { symbol, status: { in: ['open', 'partial'] } },
-    orderBy: { createdAt: 'asc' },
-    take: 2000,
-  })
+  // Read each side from the top of the book; ordering by creation time truncated the best levels
+  const take = Math.max(depth * 5, 200)
+  const base = { symbol, status: { in: ['open', 'partial'] } }
+  const [bidRows, askRows] = await Promise.all([
+    prisma.order.findMany({ where: { ...base, side: 'buy' }, orderBy: { price: 'desc' }, take }),
+    prisma.order.findMany({ where: { ...base, side: 'sell' }, orderBy: { price: 'asc' }, take }),
+  ])
+  const rows = [...bidRows, ...askRows]
 
   const bids = new Map()
   const asks = new Map()

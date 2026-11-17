@@ -9,11 +9,14 @@ router.get('/', async (req, res, next) => {
     const where = { isPublished: true }
     if (category && category !== 'all') where.category = category
 
+    const take = Math.min(100, Math.max(1, parseInt(limit) || 20))
+    const skip = Math.max(0, parseInt(offset) || 0)
+
     const news = await prisma.news.findMany({
       where,
       orderBy: [{ priority: 'desc' }, { publishedAt: 'desc' }, { createdAt: 'desc' }],
-      take: parseInt(limit),
-      skip: parseInt(offset),
+      take,
+      skip,
     })
     res.json(news.map((n) => ({ ...n, _id: n.id })))
   } catch (e) {

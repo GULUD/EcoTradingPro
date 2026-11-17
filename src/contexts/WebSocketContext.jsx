@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react'
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import { useAuth } from './AuthContext'
 import { API_BASE, WS_BASE } from '../utils/api'
@@ -14,19 +14,41 @@ export const useWebSocket = () => {
 }
 
 export const WebSocketProvider = ({ children }) => {
-  const { user } = useAuth()
+  const { user, updateUser } = useAuth()
   const [socket, setSocket] = useState(null)
   const [isConnected, setIsConnected] = useState(false)
   const [marketData, setMarketData] = useState({})
   const [notifications, setNotifications] = useState([])
 
+  // Refs keep the socket handlers current without making the effect depend on their values
+  const tokenRef = useRef(localStorage.getItem('token') || '')
+  tokenRef.current = localStorage.getItem('token') || ''
+  const userRef = useRef(user)
+  userRef.current = user
+
   useEffect(() => {
+    const refreshProfile = async () => {
+      const token = tokenRef.current
+      if (!token) return
+      try {
+        const response = await fetch(`${API_BASE}/api/users/profile`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!response.ok) return
+        const data = await response.json()
+        // profile omits role, so merge over the known user instead of replacing it
+        updateUser({ ...(userRef.current || {}), ...data })
+      } catch (error) {
+        console.error('[ws] profile refresh failed', error.message)
+      }
+    }
+
     const newSocket = io(WS_BASE, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
       timeout: 8000,
       // The server derives the private room from this token; user ids sent by the client are ignored
-      auth: { token: localStorage.getItem('token') || '' },
+      auth: { token: tokenRef.current },
     })
 
     newSocket.on('connect', () => {
@@ -68,6 +90,10 @@ export const WebSocketProvider = ({ children }) => {
       }
     })
 
+    // Balance can change without this client placing an order (admin edits, P2P release)
+    newSocket.on('balance:update', refreshProfile)
+    newSocket.on('p2p:order', refreshProfile)
+
     setSocket(newSocket)
 
     // Render free tier sleeps: fall back to polling while the socket is down
@@ -93,7 +119,8 @@ export const WebSocketProvider = ({ children }) => {
       clearInterval(timer)
       newSocket.close()
     }
-  }, [user])
+    // Reconnecting on every balance update (new user object) dropped pushes, so only the id matters
+  }, [user?.id])
 
   useEffect(() => {
     if (typeof Notification !== 'undefined' && Notification.permission === 'default') {

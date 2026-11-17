@@ -62,10 +62,16 @@ function AdminDashboard() {
   }
 
   const updateUserBalance = async (userId, balance) => {
+    const value = Number(balance)
+    // Number('') is 0, so empty input needs its own guard before reaching the API
+    if (String(balance).trim() === '' || !Number.isFinite(value) || value < 0) {
+      alert('Enter a balance of zero or more')
+      return
+    }
     try {
       const token = localStorage.getItem('token')
       const response = await axios.put(`/api/admin/users/${userId}/balance`,
-        { balance: parseFloat(balance) },
+        { balance: value },
         { headers: { Authorization: `Bearer ${token}` } }
       )
       setUsers(users.map(user => user._id === userId ? response.data : user))
@@ -517,7 +523,9 @@ function AdminDashboard() {
       {selectedUser && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="backdrop-filter backdrop-blur-lg bg-white/10 border border-white/20 rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">Edit Balance for {selectedUser.name}</h3>
+            <h3 className="text-xl font-bold mb-4">
+              Edit Balance for {[selectedUser.firstName, selectedUser.lastName].filter(Boolean).join(' ') || selectedUser.email}
+            </h3>
             <div className="mb-6">
               <label className="block text-sm font-medium mb-2 text-gray-300">New Balance</label>
               <input

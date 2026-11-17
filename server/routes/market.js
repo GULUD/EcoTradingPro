@@ -5,6 +5,44 @@ const { getOrderBook, getRecentTrades, buildCandles } = require('../services/mat
 
 const router = express.Router()
 
+// Candles are aggregated from up to 20000 trades, so a short TTL keeps polling
+// dashboards from redoing the same aggregation on every request.
+const CHART_CACHE_TTL_MS = 60 * 1000
+const CHART_CACHE_MAX = 500
+const chartCache = new Map()
+
+const TIMEFRAMES = new Set(['1m', '5m', '15m', '1h', '4h', '1d', '1w'])
+
+function normalizeTimeframe(raw) {
+  const value = String(raw || '').trim().toLowerCase()
+  if (TIMEFRAMES.has(value)) return value
+  // Legacy numeric timeframe (days): clamp to 1-365, then use the closest bucket
+  const parsed = parseInt(value, 10)
+  if (Number.isFinite(parsed)) {
+    const days = Math.min(365, Math.max(1, parsed))
+    return days <= 120 ? '1d' : '1w'
+  }
+  return '1h'
+}
+
+function getCachedCandles(key) {
+  const entry = chartCache.get(key)
+  if (!entry) return null
+  if (Date.now() - entry.ts > CHART_CACHE_TTL_MS) {
+    chartCache.delete(key)
+    return null
+  }
+  return entry.ohlcv
+}
+
+function setCachedCandles(key, ohlcv) {
+  if (chartCache.size >= CHART_CACHE_MAX) {
+    // Map preserves insertion order, so the first key is the oldest entry
+    chartCache.delete(chartCache.keys().next().value)
+  }
+  chartCache.set(key, { ts: Date.now(), ohlcv })
+}
+
 async function loadCoins() {
   return prisma.marketData.findMany({ where: { delisted: false }, orderBy: { symbol: 'asc' } })
 }
@@ -59,12 +97,18 @@ router.get('/list', async (req, res, next) => {
 router.get('/chart/:symbol', async (req, res, next) => {
   try {
     const symbol = String(req.params.symbol).toUpperCase().split('/')[0]
-    const { timeframe = '1h', indicators } = req.query
+    const { indicators } = req.query
+    const timeframe = normalizeTimeframe(req.query.timeframe)
     const coin = await prisma.marketData.findUnique({ where: { symbol } })
     if (!coin) return res.status(404).json({ success: false, message: 'symbol not found' })
 
     // Candles are aggregated from executed trades; a market with no fills has no chart history yet
-    const ohlcv = await buildCandles(symbol, timeframe)
+    const cacheKey = `${symbol}|${timeframe}`
+    let ohlcv = getCachedCandles(cacheKey)
+    if (!ohlcv) {
+      ohlcv = await buildCandles(symbol, timeframe)
+      setCachedCandles(cacheKey, ohlcv)
+    }
     const response = { ohlcv }
     if (indicators && ohlcv.length) {
       response.indicators = calculateTechnicalIndicators(ohlcv, indicators.split(','))

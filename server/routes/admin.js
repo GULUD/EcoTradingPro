@@ -31,28 +31,48 @@ router.put('/users/:userId/balance', authenticateToken, requireAdmin, async (req
   try {
     const { userId } = req.params
     const { balance } = req.body
-    if (typeof balance !== 'number' || balance < 0) {
+    if (!Number.isFinite(balance) || balance < 0) {
       return res.status(400).json({ success: false, error: 'Invalid balance amount' })
     }
+    const target = +balance.toFixed(8)
 
-    const user = await prisma.user.findUnique({ where: { id: userId } })
-    if (!user) return res.status(404).json({ success: false, error: 'User not found' })
+    // Applied as a delta inside one serializable transaction so concurrent fills are not overwritten
+    const adjust = () =>
+      prisma.$transaction(
+        async (tx) => {
+          const cur = await tx.user.findUnique({ where: { id: userId } })
+          if (!cur) return null
+          const delta = +(target - cur.balance).toFixed(8)
+          const u = await tx.user.update({ where: { id: userId }, data: { balance: { increment: delta } } })
 
-    const target = +balance.toFixed(2)
-    const updated = await prisma.user.update({ where: { id: userId }, data: { balance: target } })
+          await tx.transaction.create({
+            data: {
+              userId,
+              type: 'admin_adjust',
+              amount: delta,
+              balanceBefore: cur.balance,
+              balanceAfter: u.balance,
+              reason: 'admin set balance',
+              operator: req.user.email,
+              ts: BigInt(Date.now()),
+            },
+          })
+          return u
+        },
+        { isolationLevel: 'Serializable' }
+      )
 
-    await prisma.transaction.create({
-      data: {
-        userId,
-        type: 'admin_adjust',
-        amount: +(target - user.balance).toFixed(2),
-        balanceBefore: user.balance,
-        balanceAfter: updated.balance,
-        reason: 'admin set balance',
-        operator: req.user.email,
-        ts: BigInt(Date.now()),
-      },
-    })
+    let updated
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        updated = await adjust()
+        break
+      } catch (e) {
+        if (e.code === 'P2034' && attempt === 0) continue
+        throw e
+      }
+    }
+    if (!updated) return res.status(404).json({ success: false, error: 'User not found' })
 
     const io = req.app.get('io')
     if (io) {

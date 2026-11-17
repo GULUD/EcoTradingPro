@@ -194,8 +194,19 @@ router.post('/merchant/ads', authenticateToken, requireUser, async (req, res, ne
     const methods = methodsOf(paymentMethods).filter((m) => m && m.type && m.account)
     if (!methods.length) return res.status(400).json({ success: false, error: 'at least one payment method required' })
 
-    if (side === 'sell' && req.user.balance < avail) {
-      return res.status(400).json({ success: false, error: 'Insufficient GULU balance' })
+    if (side === 'sell') {
+      // Listing depth must be backed by free balance; otherwise the same GULU can back unlimited ads
+      const check = await writeTx(async (tx) => {
+        const user = await tx.user.findUnique({ where: { id: req.user.id } })
+        const open = await tx.p2PAd.aggregate({
+          where: { merchantId: merchant.id, side: 'sell', status: { in: ['active', 'paused'] } },
+          _sum: { available: true },
+        })
+        const committed = open._sum.available || 0
+        if (!user || user.balance < committed + avail) return fail(400, 'Insufficient GULU balance')
+        return { ok: true }
+      })
+      if (check.reject) return res.status(check.reject.status).json({ success: false, error: check.reject.error })
     }
 
     const ad = await prisma.p2PAd.create({
@@ -240,7 +251,27 @@ router.patch('/merchant/ads/:id', authenticateToken, requireUser, async (req, re
     }
     if (terms !== undefined) data.terms = terms || null
 
-    const updated = await prisma.p2PAd.update({ where: { id: ad.id }, data, include: { merchant: true } })
+    const finalMin = data.minAmount != null ? data.minAmount : ad.minAmount
+    const finalMax = data.maxAmount != null ? data.maxAmount : ad.maxAmount
+    if (!(finalMax >= finalMin)) {
+      return res.status(400).json({ success: false, error: 'max amount must be greater than or equal to min amount' })
+    }
+
+    const updated = await writeTx(async (tx) => {
+      if (ad.side === 'sell' && data.available != null) {
+        const open = await tx.p2PAd.aggregate({
+          where: { id: { not: ad.id }, merchantId: merchant.id, side: 'sell', status: { in: ['active', 'paused'] } },
+          _sum: { available: true },
+        })
+        const user = await tx.user.findUnique({ where: { id: merchant.userId } })
+        if (!user || user.balance < (open._sum.available || 0) + data.available) {
+          return fail(400, 'Available exceeds your GULU balance')
+        }
+      }
+      return tx.p2PAd.update({ where: { id: ad.id }, data, include: { merchant: true } })
+    })
+    if (updated.reject) return res.status(updated.reject.status).json({ success: false, error: updated.reject.error })
+
     res.json({ success: true, ad: toAdDto(updated) })
   } catch (e) {
     next(e)
@@ -282,6 +313,17 @@ router.post('/orders', authenticateToken, requireUser, async (req, res, next) =>
       }
       if (ad.available < gulu) return fail(400, 'Ad has insufficient liquidity')
       if (gulu > ad.merchant.maxOrderGulu) return fail(400, `Single order limit is ${ad.merchant.maxOrderGulu} GULU`)
+      if (ad.merchant.dailyLimitGulu > 0) {
+        const since = new Date()
+        since.setHours(0, 0, 0, 0)
+        const today = await tx.p2POrder.aggregate({
+          where: { sellerId: ad.merchant.userId, createdAt: { gte: since }, status: { in: ['pending_payment', 'paid', 'disputed', 'completed'] } },
+          _sum: { amount: true },
+        })
+        if ((today._sum.amount || 0) + gulu > ad.merchant.dailyLimitGulu) {
+          return fail(400, 'Merchant daily limit reached')
+        }
+      }
 
       const buyerId = ad.side === 'sell' ? req.user.id : ad.merchant.userId
       const sellerId = ad.side === 'sell' ? ad.merchant.userId : req.user.id
@@ -357,17 +399,22 @@ router.get('/orders', authenticateToken, requireUser, async (req, res, next) => 
 router.post('/orders/:id/pay', authenticateToken, requireUser, async (req, res, next) => {
   try {
     const { method, ref } = req.body
-    const order = await prisma.p2POrder.findUnique({ where: { id: req.params.id } })
-    if (!order) return res.status(404).json({ success: false, error: 'Order not found' })
-    if (order.buyerId !== req.user.id) return res.status(403).json({ success: false, error: 'Buyer only' })
-    if (order.status !== 'pending_payment') return res.status(400).json({ success: false, error: 'Order is not awaiting payment' })
+    // Conditional write: a concurrent cancel or dispute must not be overwritten by a stale "pending" read
+    const result = await writeTx(async (tx) => {
+      const order = await tx.p2POrder.findUnique({ where: { id: req.params.id } })
+      if (!order) return fail(404, 'Order not found')
+      if (order.buyerId !== req.user.id) return fail(403, 'Buyer only')
 
-    await prisma.p2POrder.update({
-      where: { id: order.id },
-      data: { status: 'paid', paidAt: new Date(), paymentMethod: method || null, paymentRef: ref || null },
+      const moved = await tx.p2POrder.updateMany({
+        where: { id: order.id, buyerId: req.user.id, status: 'pending_payment' },
+        data: { status: 'paid', paidAt: new Date(), paymentMethod: method || null, paymentRef: ref || null },
+      })
+      if (moved.count === 0) return fail(400, 'Order is not awaiting payment')
+      return { id: order.id }
     })
+    if (result.reject) return res.status(result.reject.status).json({ success: false, error: result.reject.error })
 
-    const full = await loadOrderFull(order.id)
+    const full = await loadOrderFull(result.id)
     const io = req.app.get('io')
     if (io) {
       io.to(`user-${full.sellerId}`).emit('p2p:order', { orderId: full.id, status: 'paid' })
@@ -384,10 +431,17 @@ async function settleOrder(orderId, actor) {
   return writeTx(async (tx) => {
     const order = await tx.p2POrder.findUnique({ where: { id: orderId }, include: { ad: { include: { merchant: true } } } })
     if (!order) return fail(404, 'Order not found')
-    if (order.status !== 'paid' && order.status !== 'disputed') return fail(400, 'Order cannot be completed')
+    if (!['paid', 'disputed'].includes(order.status)) return fail(400, 'Order cannot be completed')
 
     const seller = await tx.user.findUnique({ where: { id: order.sellerId } })
     if (!seller || seller.locked < order.amount) return fail(400, 'Escrow is inconsistent')
+
+    // Claim after validating: a failed check must not leave the order marked completed
+    const claimed = await tx.p2POrder.updateMany({
+      where: { id: orderId, status: { in: ['paid', 'disputed'] } },
+      data: { status: 'completed', completedAt: new Date() },
+    })
+    if (claimed.count === 0) return fail(400, 'Order cannot be completed')
 
     const buyer = await tx.user.findUnique({ where: { id: order.buyerId } })
     const buyerBefore = buyer.balance
@@ -399,10 +453,6 @@ async function settleOrder(orderId, actor) {
     await tx.user.update({
       where: { id: order.buyerId },
       data: { balance: { increment: order.amount } },
-    })
-    await tx.p2POrder.update({
-      where: { id: order.id },
-      data: { status: 'completed', completedAt: new Date() },
     })
     await tx.merchant.update({
       where: { id: order.ad.merchantId },
@@ -425,28 +475,38 @@ async function settleOrder(orderId, actor) {
   })
 }
 
-async function refundOrder(orderId, actor, reason) {
+async function refundOrder(orderId, actor, reason, { allowPaid = false } = {}) {
   return writeTx(async (tx) => {
     const order = await tx.p2POrder.findUnique({ where: { id: orderId }, include: { ad: true } })
     if (!order) return fail(404, 'Order not found')
-    if (!['pending_payment', 'paid', 'disputed'].includes(order.status)) return fail(400, 'Order cannot be cancelled')
+
+    // Cancelling a paid order would let the buyer claim a refund and still dispute the payment
+    const cancellable = allowPaid ? ['pending_payment', 'paid', 'disputed'] : ['pending_payment']
+    if (!cancellable.includes(order.status)) {
+      return fail(400, allowPaid ? 'Order cannot be cancelled' : 'Order already paid, open a dispute instead')
+    }
 
     const seller = await tx.user.findUnique({ where: { id: order.sellerId } })
     if (!seller || seller.locked < order.amount) return fail(400, 'Escrow is inconsistent')
+
+    // Claim after validating: a failed check must not leave the order marked cancelled
+    const claimed = await tx.p2POrder.updateMany({
+      where: { id: orderId, status: { in: cancellable } },
+      data: { status: 'cancelled', cancelReason: reason || null },
+    })
+    if (claimed.count === 0) return fail(400, allowPaid ? 'Order cannot be cancelled' : 'Order already paid, open a dispute instead')
 
     await tx.user.update({
       where: { id: order.sellerId },
       data: { locked: { decrement: order.amount }, balance: { increment: order.amount } },
     })
-    await tx.p2POrder.update({
-      where: { id: order.id },
-      data: { status: 'cancelled', cancelReason: reason || null },
-    })
-    // Unsold liquidity returns to the ad so it can trade again
-    await tx.p2PAd.update({
-      where: { id: order.adId },
-      data: { available: { increment: order.amount }, status: 'active' },
-    })
+    // Closed ads stay closed; only live ads get their displayed liquidity back
+    if (order.ad.status !== 'closed') {
+      await tx.p2PAd.update({
+        where: { id: order.adId },
+        data: { available: { increment: order.amount }, status: 'active' },
+      })
+    }
     await tx.transaction.create({
       data: {
         userId: order.sellerId,
@@ -513,10 +573,12 @@ router.post('/orders/:id/dispute', authenticateToken, requireUser, async (req, r
     }
     if (order.status !== 'paid') return res.status(400).json({ success: false, error: 'Only paid orders can be disputed' })
 
-    await prisma.p2POrder.update({
-      where: { id: order.id },
+    // Guarded transition: a concurrent release may already have completed the order
+    const moved = await prisma.p2POrder.updateMany({
+      where: { id: order.id, status: 'paid' },
       data: { status: 'disputed', cancelReason: req.body?.reason || null },
     })
+    if (moved.count === 0) return res.status(400).json({ success: false, error: 'Order is no longer disputable' })
     res.json({ success: true })
   } catch (e) {
     next(e)

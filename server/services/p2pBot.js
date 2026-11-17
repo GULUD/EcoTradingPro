@@ -60,7 +60,8 @@ async function seedBots() {
           available: b.available,
           paymentMethods: [],
           terms: 'Pay with the account shown after the order is created.',
-          autoRelease: true,
+          // Auto release is opt-in per ad; a bot must not hand out escrow on a buyer's word alone
+          autoRelease: false,
         },
       })
       console.log('[seed] p2p bot ad created', b.business)
@@ -70,6 +71,8 @@ async function seedBots() {
 
 // Bot merchants confirm receipt automatically; the delay leaves room for a dispute
 async function autoReleaseTick(io) {
+  // Disabled unless explicitly enabled; releasing escrow without a verified payment is a loss vector
+  if (process.env.P2P_AUTO_RELEASE !== 'true') return
   const cutoff = new Date(Date.now() - 20000)
   const due = await prisma.p2POrder.findMany({
     where: { status: 'paid', paidAt: { lte: cutoff }, ad: { autoRelease: true } },

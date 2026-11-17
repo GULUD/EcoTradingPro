@@ -23,6 +23,11 @@ export function ThemeProvider({ children }) {
     localStorage.setItem('theme', newTheme)
   }
 
+  // Tailwind's dark variant keys off the html class, so state alone never changes the UI
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+  }, [theme])
+
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
     const handleChange = (e) => {
