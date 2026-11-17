@@ -15,6 +15,7 @@ function Watchlist() {
   const [sortBy, setSortBy] = useState('symbol')
   const [sortOrder, setSortOrder] = useState('asc')
   const [availableAssets, setAvailableAssets] = useState([])
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     fetchWatchlist()
@@ -81,10 +82,11 @@ function Watchlist() {
       await axios.post('/api/users/watchlist', { asset }, {
         headers: { Authorization: `Bearer ${token}` }
       })
+      setNotice(`${asset} added to your watchlist`)
       fetchWatchlist()
       setShowAddForm(false)
     } catch (error) {
-      console.error('[watchlist] add failed', error.message)
+      setNotice(error.response?.data?.error || 'Failed to add asset')
     }
   }
 
@@ -94,9 +96,10 @@ function Watchlist() {
       await axios.delete(`/api/users/watchlist/${asset}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
+      setNotice(`${asset} removed from your watchlist`)
       fetchWatchlist()
     } catch (error) {
-      console.error('[watchlist] remove failed', error.message)
+      setNotice(error.response?.data?.error || 'Failed to remove asset')
     }
   }
 
@@ -193,6 +196,11 @@ function Watchlist() {
             </button>
           </div>
         </div>
+        {notice && (
+          <p className="mt-3 text-sm text-gray-600 dark:text-gray-300" role="status">
+            {notice}
+          </p>
+        )}
       </div>
 
       {/* Add Asset Modal */}

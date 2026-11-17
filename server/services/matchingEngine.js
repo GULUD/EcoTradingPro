@@ -350,12 +350,18 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size, a
   }
 
   if (io && result.fills.length) {
-    io.to('market').emit('trade:executed', {
-      symbol,
-      side,
-      size: result.order.filled,
-      price: result.lastPrice,
-      time: Date.now(),
+    const at = Date.now()
+    // Emit one event per fill: an aggregate size paired with the last price would
+    // broadcast a trade that never happened when a sweep crosses several levels
+    result.fills.forEach((fill, index) => {
+      io.to('market').emit('trade:executed', {
+        id: `${result.order.id}-${index}`,
+        symbol,
+        side,
+        size: fill.size,
+        price: fill.price,
+        time: at,
+      })
     })
     io.to('market').emit('orderbook:update', { symbol })
     io.to('market').emit('price:update', {

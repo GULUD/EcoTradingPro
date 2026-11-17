@@ -66,7 +66,7 @@ async function step(bot, io) {
     },
   })
 
-  await prisma.trade.create({
+  const row = await prisma.trade.create({
     data: {
       userId: bot.shadowUserId || null,
       symbol: bot.symbol,
@@ -81,6 +81,7 @@ async function step(bot, io) {
   })
 
   io.to('market').emit('trade:executed', {
+    id: row.id,
     symbol: bot.symbol,
     side,
     size: visible,

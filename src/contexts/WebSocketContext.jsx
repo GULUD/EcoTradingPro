@@ -93,7 +93,8 @@ export const WebSocketProvider = ({ children }) => {
     newSocket.on('trade:executed', (trade) => {
       setNotifications((prev) => [
         {
-          id: `trade-${trade.time}-${trade.symbol}-${trade.price}`,
+          // Server ids are unique even when two fills share a millisecond
+          id: trade.id || `trade-${trade.time}-${trade.symbol}-${trade.price}-${trade.size}`,
           type: 'trade',
           title: 'Trade executed',
           message: `${trade.side} ${trade.size} ${trade.symbol} @ ${trade.price}`,

@@ -18,6 +18,13 @@ const toUserDto = (u) => ({
 
 const toNewsDto = (n) => ({ ...n, _id: n.id })
 
+// priority is an Int column, so out-of-range numbers would reach Postgres and 500
+const clampPriority = (value) => {
+  const rank = Number(value)
+  if (!Number.isFinite(rank)) return null
+  return Math.max(-1000000, Math.min(1000000, Math.trunc(rank)))
+}
+
 router.get('/users', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
     const users = await prisma.user.findMany({ orderBy: { createdAt: 'desc' } })
@@ -148,15 +155,18 @@ router.get('/stats', authenticateToken, requireAdmin, async (req, res, next) => 
 router.post('/news', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
     const { title, content, author, category, priority, isPublished } = req.body
-    if (!title) return res.status(400).json({ success: false, message: 'title required' })
-    const rank = Number(priority)
+    const headline = typeof title === 'string' ? title.trim() : ''
+    if (!headline || headline.length > 200) {
+      return res.status(400).json({ success: false, message: 'title must be 1-200 characters' })
+    }
+    const rank = clampPriority(priority)
     const news = await prisma.news.create({
       data: {
-        title,
+        title: headline,
         content: content || '',
         author: author || req.user.name,
         category: category || null,
-        priority: Number.isFinite(rank) ? Math.trunc(rank) : 0,
+        priority: rank == null ? 0 : rank,
         isPublished: isPublished !== false,
       },
     })
@@ -189,17 +199,23 @@ router.put('/news/:newsId', authenticateToken, requireAdmin, async (req, res, ne
   try {
     const { title, content, isPublished, category, priority } = req.body
     const data = {}
-    if (title !== undefined) data.title = title
+    if (title !== undefined) {
+      const headline = typeof title === 'string' ? title.trim() : ''
+      if (!headline || headline.length > 200) {
+        return res.status(400).json({ success: false, message: 'title must be 1-200 characters' })
+      }
+      data.title = headline
+    }
     if (content !== undefined) data.content = content
     if (isPublished !== undefined) data.isPublished = isPublished
     if (category !== undefined) data.category = category
     if (priority !== undefined) {
       // priority is an Int column; a non-numeric value would abort the whole update
-      const rank = Number(priority)
-      if (!Number.isFinite(rank)) {
+      const rank = clampPriority(priority)
+      if (rank == null) {
         return res.status(400).json({ success: false, message: 'priority must be a number' })
       }
-      data.priority = Math.trunc(rank)
+      data.priority = rank
     }
 
     const news = await prisma.news.update({ where: { id: req.params.newsId }, data })
