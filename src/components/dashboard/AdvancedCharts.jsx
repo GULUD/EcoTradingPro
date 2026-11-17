@@ -59,11 +59,11 @@ function AdvancedCharts() {
   ]
 
   const drawingTools = [
-    { id: 'trend', name: 'Trend Line', icon: '📈' },
-    { id: 'horizontal', name: 'Horizontal Line', icon: '➖' },
-    { id: 'rectangle', name: 'Rectangle', icon: '⬛' },
-    { id: 'fibonacci', name: 'Fibonacci', icon: '🌀' },
-    { id: 'text', name: 'Text', icon: '📝' }
+    { id: 'trend', name: 'Trend Line', icon: 'fa-chart-line' },
+    { id: 'horizontal', name: 'Horizontal Line', icon: 'fa-minus' },
+    { id: 'rectangle', name: 'Rectangle', icon: 'fa-square' },
+    { id: 'fibonacci', name: 'Fibonacci', icon: 'fa-water' },
+    { id: 'text', name: 'Text', icon: 'fa-font' }
   ]
 
   useEffect(() => {
@@ -452,7 +452,7 @@ function AdvancedCharts() {
                     activeDrawing === tool.id ? 'bg-brand-100 dark:bg-brand-900/20 border-brand-500' : ''
                   }`}
                 >
-                  <div className="text-2xl mb-1">{tool.icon}</div>
+                  <i className={`fas ${tool.icon} text-2xl mb-1`}></i>
                   <div className="text-xs">{tool.name}</div>
                 </button>
               ))}

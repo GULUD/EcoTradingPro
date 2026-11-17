@@ -269,7 +269,7 @@ function Analytics() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="text-center">
             <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-emerald-100 dark:bg-emerald-900/20 flex items-center justify-center">
-              <span className="text-2xl text-emerald-500">📈</span>
+              <i className="fas fa-chart-pie text-2xl text-emerald-500"></i>
             </div>
             <h4 className="font-semibold mb-2">Portfolio Diversification</h4>
             <p className="text-sm text-gray-500">
@@ -279,7 +279,7 @@ function Analytics() {
 
           <div className="text-center">
             <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-              <span className="text-2xl text-blue-500">⚖️</span>
+              <i className="fas fa-balance-scale text-2xl text-blue-500"></i>
             </div>
             <h4 className="font-semibold mb-2">Concentration Risk</h4>
             <p className="text-sm text-gray-500">
@@ -289,7 +289,7 @@ function Analytics() {
 
           <div className="text-center">
             <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-orange-100 dark:bg-orange-900/20 flex items-center justify-center">
-              <span className="text-2xl text-orange-500">🎯</span>
+              <i className="fas fa-bullseye text-2xl text-orange-500"></i>
             </div>
             <h4 className="font-semibold mb-2">Correlation Risk</h4>
             <p className="text-sm text-gray-500">{risk?.correlationRisk || EMPTY}</p>

@@ -329,7 +329,7 @@ function NewsManagement() {
         
         {news.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">📰</div>
+            <i className="fas fa-newspaper text-5xl text-gray-400 mb-4"></i>
             <h3 className="text-xl font-semibold mb-2">No articles yet</h3>
             <p className="text-gray-500 mb-4">Create your first news article to get started</p>
             <button

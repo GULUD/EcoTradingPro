@@ -92,7 +92,6 @@ app.use('/api/market', require('./routes/market'))
 app.use('/api/news', require('./routes/news'))
 app.use('/api/announcements', require('./routes/announcements'))
 app.use('/api/portfolio', require('./routes/portfolio'))
-app.use('/api/competitions', require('./routes/competitions'))
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', uptime: process.uptime(), ts: Date.now() })

@@ -105,15 +105,15 @@ function normalizeOrder(body) {
 
 async function placeStopOrder(req, res, payload) {
   const { symbol, side, stopType, price, triggerPrice } = payload
-  // Stop schedules are always sized in base units so the fired trade matches the plan
-  const size = payload.size != null ? payload.size : payload.amount
-  if (!(triggerPrice > 0)) {
-    return res.status(400).json({ success: false, error: 'triggerPrice must be greater than zero' })
+  // Stop schedules are always sized in base units; a quote amount is ambiguous for buys
+  const size = payload.size != null ? payload.size : side === 'sell' ? payload.amount : null
+  if (!Number.isFinite(triggerPrice) || !(triggerPrice > 0) || triggerPrice > 1e12) {
+    return res.status(400).json({ success: false, error: 'triggerPrice must be a positive number' })
   }
-  if (!(size > 0)) {
-    return res.status(400).json({ success: false, error: 'size must be greater than zero' })
+  if (!Number.isFinite(size) || !(size > 0) || size > 1e9) {
+    return res.status(400).json({ success: false, error: 'size must be a positive number' })
   }
-  if (stopType === 'stop_limit' && !(price > 0)) {
+  if (stopType === 'stop_limit' && (!Number.isFinite(price) || !(price > 0) || price > 1e12)) {
     return res.status(400).json({ success: false, error: 'limit price required for a stop-limit order' })
   }
   if (stopType === 'stop_limit' && Math.abs(price / triggerPrice - 1) > 0.2) {
@@ -128,13 +128,23 @@ async function placeStopOrder(req, res, payload) {
   const user = await prisma.user.findUnique({ where: { id: req.user.id } })
   if (!user) return res.status(401).json({ success: false, error: 'user not found' })
 
-  // Nothing is locked while a stop waits, so require funding up front and re-check on firing
+  // Nothing is locked while a stop waits, so require funding up front and re-check on firing.
+  // Everything already armed counts too, otherwise one balance could back many stops.
   const reference = stopType === 'stop_limit' ? price : triggerPrice * 1.01
-  if (side === 'buy' && user.balance + 1e-9 < size * reference) {
-    return res.status(400).json({ success: false, error: 'insufficient balance' })
+  const armed = await prisma.order.findMany({
+    where: { userId: user.id, type: { in: ['stop_loss', 'stop_limit'] }, status: 'open' },
+    select: { side: true, size: true, price: true, triggerPrice: true, type: true },
+  })
+  const reservedQuote = armed
+    .filter((o) => o.side === 'buy')
+    .reduce((sum, o) => sum + o.size * (o.type === 'stop_limit' ? o.price : o.triggerPrice * 1.01), 0)
+  const reservedBase = armed.filter((o) => o.side === 'sell').reduce((sum, o) => sum + o.size, 0)
+
+  if (side === 'buy' && user.balance + 1e-9 < reservedQuote + size * reference) {
+    return res.status(400).json({ success: false, error: 'insufficient balance for this and armed stop orders' })
   }
-  if (side === 'sell' && Number((user.portfolio || {})[symbol] || 0) + 1e-9 < size) {
-    return res.status(400).json({ success: false, error: 'insufficient holdings' })
+  if (side === 'sell' && Number((user.portfolio || {})[symbol] || 0) + 1e-9 < reservedBase + size) {
+    return res.status(400).json({ success: false, error: 'insufficient holdings for this and armed stop orders' })
   }
 
   const order = await prisma.order.create({
@@ -357,10 +367,24 @@ router.post('/trading-bots', authenticateToken, requireUser, async (req, res, ne
       const u = await tx.user.findUnique({ where: { id: req.user.id } })
       const list = asArray(u.tradingBots)
       list.push(bot)
-      return tx.user.updateMany({
+      const res = await tx.user.updateMany({
         where: { id: req.user.id, balance: { gte: inv } },
         data: { balance: { decrement: inv }, tradingBots: list },
       })
+      if (res.count > 0) {
+        await tx.transaction.create({
+          data: {
+            userId: req.user.id,
+            type: 'bot_invest',
+            amount: -inv,
+            balanceBefore: u.balance,
+            balanceAfter: +(u.balance - inv).toFixed(8),
+            reason: `bot ${bot.name}`,
+            ts: BigInt(Date.now()),
+          },
+        })
+      }
+      return res
     })
     if (debited.count === 0) {
       return res.status(400).json({ success: false, error: 'Insufficient balance' })
@@ -406,13 +430,28 @@ router.delete('/trading-bots/:botId', authenticateToken, requireUser, async (req
           const idx = list.findIndex((b) => b.id === req.params.botId)
           if (idx === -1) return { status: 404 }
           const bot = list[idx]
+          // Historic JSON may hold strings; coerce before adding so refunds cannot concatenate
+          const refund = +((Number(bot.investment) || 0) + (Number(bot.profit) || 0)).toFixed(8)
           await tx.user.update({
             where: { id: req.user.id },
             data: {
-              balance: { increment: (bot.investment || 0) + (bot.profit || 0) },
+              balance: { increment: refund },
               tradingBots: list.filter((_, i) => i !== idx),
             },
           })
+          if (Math.abs(refund) > 1e-9) {
+            await tx.transaction.create({
+              data: {
+                userId: req.user.id,
+                type: 'bot_refund',
+                amount: refund,
+                balanceBefore: u.balance,
+                balanceAfter: +(u.balance + refund).toFixed(8),
+                reason: `bot ${bot.name || req.params.botId} removed`,
+                ts: BigInt(Date.now()),
+              },
+            })
+          }
           return { status: 200 }
         },
         { isolationLevel: 'Serializable' }

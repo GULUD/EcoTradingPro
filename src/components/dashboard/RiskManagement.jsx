@@ -157,7 +157,7 @@ const RiskManagement = () => {
               </p>
             </div>
             <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center">
-              ⚠️
+              <i className="fas fa-exclamation-triangle"></i>
             </div>
           </div>
           <div className="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
@@ -175,7 +175,7 @@ const RiskManagement = () => {
               <p className="text-2xl font-bold">{risk ? fmtGulu(risk.var95) : EMPTY}</p>
             </div>
             <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
-              📉
+              <i className="fas fa-arrow-trend-down"></i>
             </div>
           </div>
           <div className="mt-2 text-sm text-gray-500">Daily Value at Risk</div>
@@ -190,7 +190,7 @@ const RiskManagement = () => {
               </p>
             </div>
             <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
-              📊
+              <i className="fas fa-chart-bar"></i>
             </div>
           </div>
           <div className="mt-2 text-sm text-gray-500">Gross exposure</div>
@@ -205,7 +205,7 @@ const RiskManagement = () => {
               </p>
             </div>
             <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
-              🛡️
+              <i className="fas fa-shield-alt"></i>
             </div>
           </div>
           <div className="mt-2 text-sm text-gray-500">Relative volatility</div>

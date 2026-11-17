@@ -18,13 +18,9 @@ function LandingPage() {
       const existing = Chart.getChart(heroChartRef.current)
       if (existing) existing.destroy()
       const ctx = heroChartRef.current.getContext('2d')
-      const randomWalk = (n = 50, start = 68000) => {
-        const d = [start]
-        for (let i = 1; i < n; i++) {
-          d.push(d[i - 1] + (Math.random() - 0.5) * 120)
-        }
-        return d
-      }
+      // Deterministic preview curve: the landing page must not present random data as a chart
+      const previewSeries = (n = 60, start = 68300) =>
+        Array.from({ length: n }, (_, i) => start + Math.sin(i / 4) * 320 + i * 14)
 
       charts.push(
         new Chart(ctx, {
@@ -32,7 +28,7 @@ function LandingPage() {
         data: {
           labels: Array.from({ length: 60 }, (_, i) => i),
           datasets: [{
-            data: randomWalk(60, 68300),
+            data: previewSeries(60, 68300),
             tension: 0.35,
             fill: true,
             borderWidth: 2,
@@ -124,8 +120,9 @@ function LandingPage() {
                 <button 
                   onClick={toggleTheme}
                   className="ml-1 p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5"
+                  aria-label="Toggle theme"
                 >
-                  {theme === 'dark' ? '☀️' : '🌙'}
+                  <i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`}></i>
                 </button>
               </div>
             </div>
@@ -163,16 +160,16 @@ function LandingPage() {
 
               <dl className="mt-10 grid grid-cols-3 gap-5">
                 <div className="glass rounded-xl p-4 text-center">
-                  <dt className="text-xs uppercase tracking-wider text-gray-500">Active Traders</dt>
-                  <dd className="mt-2 text-2xl font-extrabold">15,420</dd>
+                  <dt className="text-xs uppercase tracking-wider text-gray-500">Settlement</dt>
+                  <dd className="mt-2 text-2xl font-extrabold">GULU</dd>
                 </div>
                 <div className="glass rounded-xl p-4 text-center">
-                  <dt className="text-xs uppercase tracking-wider text-gray-500">Crypto Pairs</dt>
-                  <dd className="mt-2 text-2xl font-extrabold">150+</dd>
+                  <dt className="text-xs uppercase tracking-wider text-gray-500">Fiat Funding</dt>
+                  <dd className="mt-2 text-2xl font-extrabold">P2P</dd>
                 </div>
                 <div className="glass rounded-xl p-4 text-center">
-                  <dt className="text-xs uppercase tracking-wider text-gray-500">Uptime</dt>
-                  <dd className="mt-2 text-2xl font-extrabold">99.99%</dd>
+                  <dt className="text-xs uppercase tracking-wider text-gray-500">Market Access</dt>
+                  <dd className="mt-2 text-2xl font-extrabold">24/7</dd>
                 </div>
               </dl>
             </div>
@@ -223,12 +220,12 @@ function LandingPage() {
       <section className="py-3 border-y border-black/5 dark:border-white/5 bg-white/60 dark:bg-white/5 backdrop-blur">
         <div className="max-w-7xl mx-auto overflow-hidden px-4">
           <div className="flex gap-8 animate-marquee whitespace-nowrap text-sm font-medium">
-            <div className="flex items-center gap-2"><span className="text-gray-500">BTC</span><span>$68,355</span><span className="text-emerald-500">+1.2%</span></div>
-            <div className="flex items-center gap-2"><span className="text-gray-500">ETH</span><span>$3,210</span><span className="text-red-500">-0.4%</span></div>
-            <div className="flex items-center gap-2"><span className="text-gray-500">SOL</span><span>$182.4</span><span className="text-emerald-500">+2.1%</span></div>
-            <div className="flex items-center gap-2"><span className="text-gray-500">XRP</span><span>$0.62</span><span className="text-emerald-500">+0.7%</span></div>
-            <div className="flex items-center gap-2"><span className="text-gray-500">BNB</span><span>$598.3</span><span className="text-emerald-500">+0.9%</span></div>
-            <div className="flex items-center gap-2"><span className="text-gray-500">ADA</span><span>$0.52</span><span className="text-red-500">-0.3%</span></div>
+            <div className="flex items-center gap-2"><span className="text-gray-500">BTC</span><span>67,850 GULU</span><span className="text-emerald-500">+1.2%</span></div>
+            <div className="flex items-center gap-2"><span className="text-gray-500">ETH</span><span>3,210 GULU</span><span className="text-red-500">-0.4%</span></div>
+            <div className="flex items-center gap-2"><span className="text-gray-500">SOL</span><span>182.4 GULU</span><span className="text-emerald-500">+2.1%</span></div>
+            <div className="flex items-center gap-2"><span className="text-gray-500">XRP</span><span>0.62 GULU</span><span className="text-emerald-500">+0.7%</span></div>
+            <div className="flex items-center gap-2"><span className="text-gray-500">BNB</span><span>598.3 GULU</span><span className="text-emerald-500">+0.9%</span></div>
+            <div className="flex items-center gap-2"><span className="text-gray-500">ADA</span><span>0.52 GULU</span><span className="text-red-500">-0.3%</span></div>
           </div>
         </div>
       </section>
@@ -243,37 +240,37 @@ function LandingPage() {
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             <article className="group rounded-2xl p-6 border border-black/5 dark:border-white/5 bg-white/60 dark:bg-white/5 backdrop-blur hover:shadow-glow transition">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow">📊</div>
-              <h3 className="mt-4 font-semibold text-xl">Real‑Time Data</h3>
-              <p className="mt-2 text-gray-600 dark:text-gray-300">Live cryptocurrency prices, charts, and market depth with millisecond updates.</p>
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow"><i className="fas fa-chart-line"></i></div>
+              <h3 className="mt-4 font-semibold text-xl">Real-Time Data</h3>
+              <p className="mt-2 text-gray-600 dark:text-gray-300">Live prices, order book depth and charts refreshed straight from the matching engine.</p>
             </article>
 
             <article className="group rounded-2xl p-6 border border-black/5 dark:border-white/5 bg-white/60 dark:bg-white/5 backdrop-blur hover:shadow-glow transition">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow">🔐</div>
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow"><i className="fas fa-shield-alt"></i></div>
               <h3 className="mt-4 font-semibold text-xl">Secure Environment</h3>
               <p className="mt-2 text-gray-600 dark:text-gray-300">Separate user and administrator authentication with full auditability.</p>
             </article>
 
             <article className="group rounded-2xl p-6 border border-black/5 dark:border-white/5 bg-white/60 dark:bg-white/5 backdrop-blur hover:shadow-glow transition">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow">⚡</div>
-              <h3 className="mt-4 font-semibold text-xl">Futures Trading</h3>
-              <p className="mt-2 text-gray-600 dark:text-gray-300">Advanced futures contracts with leverage and margin trading capabilities.</p>
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow"><i className="fas fa-handshake"></i></div>
+              <h3 className="mt-4 font-semibold text-xl">P2P Funding</h3>
+              <p className="mt-2 text-gray-600 dark:text-gray-300">Buy and sell GULU with verified merchants using bank transfer, Alipay or WeChat Pay.</p>
             </article>
 
             <article className="group rounded-2xl p-6 border border-black/5 dark:border-white/5 bg-white/60 dark:bg-white/5 backdrop-blur hover:shadow-glow transition">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow">📰</div>
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow"><i className="fas fa-newspaper"></i></div>
               <h3 className="mt-4 font-semibold text-xl">Market News</h3>
               <p className="mt-2 text-gray-600 dark:text-gray-300">Curated cryptocurrency news and market analysis to inform your trading decisions.</p>
             </article>
 
             <article className="group rounded-2xl p-6 border border-black/5 dark:border-white/5 bg-white/60 dark:bg-white/5 backdrop-blur hover:shadow-glow transition">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow">🛠️</div>
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow"><i className="fas fa-sliders-h"></i></div>
               <h3 className="mt-4 font-semibold text-xl">Admin Control</h3>
               <p className="mt-2 text-gray-600 dark:text-gray-300">Comprehensive admin panel for user management, balance control, and platform oversight.</p>
             </article>
 
             <article className="group rounded-2xl p-6 border border-black/5 dark:border-white/5 bg-white/60 dark:bg-white/5 backdrop-blur hover:shadow-glow transition">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow">📱</div>
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow"><i className="fas fa-mobile-alt"></i></div>
               <h3 className="mt-4 font-semibold text-xl">Responsive Design</h3>
               <p className="mt-2 text-gray-600 dark:text-gray-300">Mobile-first design with dark/light theme support for trading on any device.</p>
             </article>
@@ -288,25 +285,25 @@ function LandingPage() {
             <div>
               <h2 className="text-3xl sm:text-4xl font-extrabold">Trade like a professional</h2>
               <p className="mt-3 text-gray-600 dark:text-gray-300">
-                Practice with realistic market conditions and virtual balances before risking real capital.
+                Trade spot markets with your GULU balance. Every fill is matched on the platform's internal order book.
               </p>
 
               <div className="mt-8 space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-sm font-bold">✓</div>
-                  <span>$10,000 virtual starting balance</span>
+                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-sm font-bold"><i className="fas fa-check"></i></div>
+                  <span>Fund instantly with GULU through P2P merchants</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-sm font-bold">✓</div>
-                  <span>Real-time market data integration</span>
+                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-sm font-bold"><i className="fas fa-check"></i></div>
+                  <span>Live prices, order book depth and trade history</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-sm font-bold">✓</div>
-                  <span>Risk-free learning environment</span>
+                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-sm font-bold"><i className="fas fa-check"></i></div>
+                  <span>Limit, market, stop-loss and stop-limit orders</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-sm font-bold">✓</div>
-                  <span>Advanced order types and analytics</span>
+                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white text-sm font-bold"><i className="fas fa-check"></i></div>
+                  <span>Portfolio analytics and risk reporting</span>
                 </div>
               </div>
 
@@ -317,8 +314,7 @@ function LandingPage() {
 
             <div className="bg-white dark:bg-[#0B1324] border border-black/5 dark:border-white/5 rounded-2xl p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold">Portfolio Performance</span>
-                <span className="text-sm text-emerald-400">+24.5%</span>
+                <span className="text-xs font-semibold">Portfolio Overview</span>
               </div>
               <canvas ref={roiChartRef} height="220"></canvas>
             </div>

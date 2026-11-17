@@ -20,13 +20,13 @@ export default class ErrorBoundary extends React.Component {
       return (
         <div className="min-h-screen flex items-center justify-center bg-[#0A0F1A] text-gray-100 p-6">
           <div className="text-center space-y-4 max-w-md">
-            <h1 className="text-xl font-semibold">页面加载出错</h1>
+            <h1 className="text-xl font-semibold">This page failed to load</h1>
             <p className="text-sm text-gray-400 break-words">{this.state.error.message}</p>
             <button
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium"
               onClick={() => window.location.reload()}
             >
-              重新加载
+              Reload
             </button>
           </div>
         </div>

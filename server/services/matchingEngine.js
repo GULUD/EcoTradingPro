@@ -407,6 +407,22 @@ async function cancelOrder({ userId, orderId }, io) {
       const updated = await tx.order.update({ where: { id: orderId }, data: { status: 'canceled' } })
       await tx.user.update({ where: { id: userId }, data: { balance, portfolio } })
 
+      // The released hold is a real balance change and must be visible in the ledger
+      const released = r8(balance - u.balance)
+      if (Math.abs(released) > EPS) {
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: 'order_cancel',
+            amount: released,
+            balanceBefore: u.balance,
+            balanceAfter: balance,
+            reason: `cancel ${o.side} ${remaining} ${o.symbol} @ ${o.price}`,
+            ts: BigInt(Date.now()),
+          },
+        })
+      }
+
       return { order: updated, balance, portfolio }
     }, { maxWait: 10000, timeout: 20000 })
 

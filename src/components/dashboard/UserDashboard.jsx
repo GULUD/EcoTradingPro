@@ -1,24 +1,25 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { Link, useNavigate, Routes, Route } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import { API_BASE } from '../../utils/api'
 import Chart from 'chart.js/auto'
-import Portfolio from './Portfolio'
-import Trading from './Trading'
-import Analytics from './Analytics'
-import Notifications from './Notifications'
-import OrderHistory from './OrderHistory' // Assuming these components exist
-import Watchlist from './Watchlist' // Assuming these components exist
-import TradingBots from './TradingBots'
-import SocialTrading from './SocialTrading'
-import AdvancedCharts from './AdvancedCharts'
-import TradingCompetitions from './TradingCompetitions'
-import APIAccess from './APIAccess'
-import RiskManagement from './RiskManagement'
-import PerformanceAnalytics from './PerformanceAnalytics'
-import P2P from './P2P'
+
+// Panels are loaded on demand so the dashboard shell stays small
+const Portfolio = lazy(() => import('./Portfolio'))
+const Trading = lazy(() => import('./Trading'))
+const Analytics = lazy(() => import('./Analytics'))
+const Notifications = lazy(() => import('./Notifications'))
+const OrderHistory = lazy(() => import('./OrderHistory'))
+const Watchlist = lazy(() => import('./Watchlist'))
+const TradingBots = lazy(() => import('./TradingBots'))
+const AdvancedCharts = lazy(() => import('./AdvancedCharts'))
+const RiskManagement = lazy(() => import('./RiskManagement'))
+const PerformanceAnalytics = lazy(() => import('./PerformanceAnalytics'))
+const P2P = lazy(() => import('./P2P'))
+
+const panelFallback = <div className="p-8 text-sm text-gray-500">Loading...</div>
 
 const CHART_TIMEFRAMES = { '1H': '1m', '1D': '15m', '1W': '1h', '1M': '4h', '1Y': '1d' }
 
@@ -119,25 +120,9 @@ function UserDashboard() {
               <i className="fas fa-robot text-lg"></i>
               {!sidebarCollapsed && <span>Trading Bots</span>}
             </Link>
-            <Link to="/dashboard/social-trading" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
-              <i className="fas fa-users text-lg"></i>
-              {!sidebarCollapsed && <span>Social Trading</span>}
-            </Link>
-            <Link to="/dashboard/competitions" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
-              <i className="fas fa-trophy text-lg"></i>
-              {!sidebarCollapsed && <span>Competitions</span>}
-            </Link>
             <Link to="/dashboard/notifications" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
               <i className="fas fa-bell text-lg"></i>
               {!sidebarCollapsed && <span>Notifications</span>}
-            </Link>
-            <Link to="/dashboard/news" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
-              <i className="fas fa-newspaper text-lg"></i>
-              {!sidebarCollapsed && <span>News</span>}
-            </Link>
-            <Link to="/dashboard/transactions" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
-              <i className="fas fa-history text-lg"></i>
-              {!sidebarCollapsed && <span>Transactions</span>}
             </Link>
             {/* New Navigation Links */}
             <Link to="/dashboard/order-history" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
@@ -147,10 +132,6 @@ function UserDashboard() {
             <Link to="/dashboard/watchlist" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
               <i className="fas fa-eye text-lg"></i>
               {!sidebarCollapsed && <span>Watchlist</span>}
-            </Link>
-            <Link to="/dashboard/api-access" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
-              <i className="fas fa-cog text-lg"></i>
-              {!sidebarCollapsed && <span>API Access</span>}
             </Link>
           </nav>
         </div>
@@ -220,7 +201,8 @@ function UserDashboard() {
 
           {/* Dashboard Content */}
           <main className="p-4 lg:p-6">
-            <Routes>
+            <Suspense fallback={panelFallback}>
+              <Routes>
               <Route
                 path="/"
                 element={
@@ -240,18 +222,13 @@ function UserDashboard() {
               <Route path="/p2p" element={<P2P />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/notifications" element={<Notifications />} />
-              <Route path="/news" element={<div>News Management System coming soon...</div>} />
-              <Route path="/markets" element={<div>Markets coming soon...</div>} />
-              <Route path="/transactions" element={<div>Transactions coming soon...</div>} />
               {/* New Routes */}
               <Route path="/order-history" element={<OrderHistory />} />
               <Route path="/watchlist" element={<Watchlist />} />
               <Route path="/advanced-charts" element={<AdvancedCharts />} />
               <Route path="/trading-bots" element={<TradingBots />} />
-              <Route path="/social-trading" element={<SocialTrading />} />
-              <Route path="/competitions" element={<TradingCompetitions />} />
-              <Route path="/api-access" element={<APIAccess />} />
             </Routes>
+            </Suspense>
           </main>
 
           {/* Conditional Rendering for DashboardHome components */}
@@ -521,26 +498,6 @@ function DashboardHome({
           Trading Bots
         </button>
         <button
-          onClick={() => setActiveView('social-trading')}
-          className={`px-4 py-2 rounded-lg transition ${
-            activeView === 'social-trading'
-              ? 'bg-brand-500 text-white'
-              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-          }`}
-        >
-          Social Trading
-        </button>
-        <button
-          onClick={() => setActiveView('competitions')}
-          className={`px-4 py-2 rounded-lg transition ${
-            activeView === 'competitions'
-              ? 'bg-brand-500 text-white'
-              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-          }`}
-        >
-          Competitions
-        </button>
-        <button
           onClick={() => setActiveView('order-history')}
           className={`px-4 py-2 rounded-lg transition ${
             activeView === 'order-history'
@@ -576,16 +533,6 @@ function DashboardHome({
           )}
         </button>
         <button
-          onClick={() => setActiveView('api-access')}
-          className={`px-4 py-2 rounded-lg transition ${
-            activeView === 'api-access'
-              ? 'bg-brand-500 text-white'
-              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-          }`}
-        >
-          API Access
-        </button>
-        <button
           onClick={() => setActiveView('risk-management')}
           className={`px-4 py-2 rounded-lg transition ${
             activeView === 'risk-management'
@@ -610,7 +557,7 @@ function DashboardHome({
       {/* Render content based on activeView */}
       {unpricedAssets.length > 0 && (
         <div className="mb-6 p-3 rounded-xl text-sm bg-amber-100 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300">
-          部分资产暂无法估值（{unpricedAssets.join('、')}），已按成本价计入总资产。
+          Some assets cannot be priced right now ({unpricedAssets.join(', ')}); they are valued at cost.
         </div>
       )}
       {activeView === 'analytics' && (
@@ -844,11 +791,11 @@ function DashboardHome({
               </div>
             </div>
 
-            {/* Recent Transactions */}
+            {/* Open Orders */}
             <div className="glass rounded-2xl p-6">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold">Recent Transactions</h3>
-                <Link to="/dashboard/transactions" className="text-brand-500 hover:text-brand-600 text-sm font-medium">
+                <h3 className="text-xl font-bold">Open Orders</h3>
+                <Link to="/dashboard/order-history" className="text-brand-500 hover:text-brand-600 text-sm font-medium">
                   View All
                 </Link>
               </div>
@@ -879,16 +826,15 @@ function DashboardHome({
           </div>
         </>
       )}
-      {activeView === 'advanced-charts' && <AdvancedCharts />}
-      {activeView === 'trading-bots' && <TradingBots />}
-      {activeView === 'social-trading' && <SocialTrading />}
-      {activeView === 'competitions' && <TradingCompetitions />}
-      {activeView === 'notifications' && <Notifications />}
-      {activeView === 'order-history' && <OrderHistory />}
-      {activeView === 'watchlist' && <Watchlist />}
-      {activeView === 'api-access' && <APIAccess />}
-      {activeView === 'risk-management' && <RiskManagement />}
-      {activeView === 'performance' && <PerformanceAnalytics />}
+      <Suspense fallback={panelFallback}>
+        {activeView === 'advanced-charts' && <AdvancedCharts />}
+        {activeView === 'trading-bots' && <TradingBots />}
+        {activeView === 'notifications' && <Notifications />}
+        {activeView === 'order-history' && <OrderHistory />}
+        {activeView === 'watchlist' && <Watchlist />}
+        {activeView === 'risk-management' && <RiskManagement />}
+        {activeView === 'performance' && <PerformanceAnalytics />}
+      </Suspense>
     </>
   )
 }

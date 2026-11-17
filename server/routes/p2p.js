@@ -478,6 +478,20 @@ async function settleOrder(orderId, actor) {
       },
     })
 
+    // The seller's spendable balance does not move, but the escrow release must
+    // still be traceable or held funds can only be audited as an aggregate
+    await tx.transaction.create({
+      data: {
+        userId: order.sellerId,
+        type: 'p2p_escrow_release',
+        amount: order.amount,
+        balanceBefore: seller.balance,
+        balanceAfter: seller.balance,
+        reason: `escrow released to buyer by ${actor}`,
+        ts: BigInt(Date.now()),
+      },
+    })
+
     return { order }
   })
 }

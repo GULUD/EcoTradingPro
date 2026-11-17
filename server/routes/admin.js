@@ -57,6 +57,21 @@ router.put('/users/:userId/balance', authenticateToken, requireAdmin, async (req
               ts: BigInt(Date.now()),
             },
           })
+
+          // Supply is derived from issuance records, so a manual adjustment must
+          // be booked like a mint or burn or the totals drift away from balances
+          if (Math.abs(delta) > 1e-9) {
+            await tx.guluIssue.create({
+              data: {
+                type: delta > 0 ? 'mint' : 'burn',
+                amount: Math.abs(delta),
+                userId,
+                operator: req.user.email,
+                note: 'admin set balance',
+                ts: BigInt(Date.now()),
+              },
+            })
+          }
           return u
         },
         { isolationLevel: 'Serializable' }

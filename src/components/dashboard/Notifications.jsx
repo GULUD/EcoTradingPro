@@ -13,12 +13,12 @@ function Notifications() {
 
   const getNotificationIcon = (type) => {
     switch (type) {
-      case 'trade': return '💰'
-      case 'price': return '📈'
-      case 'news': return '📰'
-      case 'system': return '⚙️'
-      case 'warning': return '⚠️'
-      default: return '🔔'
+      case 'trade': return <i className="fas fa-coins"></i>
+      case 'price': return <i className="fas fa-chart-line"></i>
+      case 'news': return <i className="fas fa-newspaper"></i>
+      case 'system': return <i className="fas fa-cog"></i>
+      case 'warning': return <i className="fas fa-exclamation-triangle"></i>
+      default: return <i className="fas fa-bell"></i>
     }
   }
 
@@ -73,7 +73,7 @@ function Notifications() {
       <div className="glass rounded-2xl p-6">
         {filteredNotifications.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">🔔</div>
+            <i className="fas fa-bell text-5xl text-gray-400 mb-4"></i>
             <h3 className="text-xl font-semibold mb-2">No notifications</h3>
             <p className="text-gray-500">
               {filter === 'all' 

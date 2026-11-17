@@ -752,7 +752,7 @@ function AdminP2P() {
                 className="text-gray-400 hover:text-gray-200"
                 aria-label="Close"
               >
-                ✕
+                &times;
               </button>
             </div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Reason</label>

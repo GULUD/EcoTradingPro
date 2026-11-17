@@ -44,11 +44,11 @@ function News() {
 
   const getPriorityIcon = (priority) => {
     switch (priority) {
-      case 'urgent': return '🚨'
-      case 'high': return '📢'
-      case 'normal': return '📰'
-      case 'low': return '📝'
-      default: return '📰'
+      case 'urgent': return <i className="fas fa-triangle-exclamation text-red-500"></i>
+      case 'high': return <i className="fas fa-bullhorn text-orange-500"></i>
+      case 'normal': return <i className="fas fa-newspaper text-blue-500"></i>
+      case 'low': return <i className="fas fa-note-sticky text-gray-400"></i>
+      default: return <i className="fas fa-newspaper text-blue-500"></i>
     }
   }
 
@@ -104,7 +104,7 @@ function News() {
       {/* News Grid */}
       {filteredNews.length === 0 ? (
         <div className="glass rounded-2xl p-12 text-center">
-          <div className="text-6xl mb-4">📰</div>
+          <i className="fas fa-newspaper text-5xl text-gray-400 mb-4"></i>
           <h3 className="text-xl font-semibold mb-2">No articles found</h3>
           <p className="text-gray-500">
             {searchTerm || selectedCategory !== 'all' 

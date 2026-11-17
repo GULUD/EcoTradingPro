@@ -22,7 +22,7 @@ export function CoinManagement() {
   }
 
   useEffect(() => {
-    load().catch((e) => setMsg(e.response?.data?.message || '加载失败'))
+    load().catch((e) => setMsg(e.response?.data?.message || 'Failed to load'))
   }, [])
 
   const create = async (e) => {
@@ -38,9 +38,9 @@ export function CoinManagement() {
       })
       setForm({ symbol: '', name: '', price: '', volatility: '0.8', decimals: '2' })
       await load()
-      setMsg('上架成功')
+      setMsg('Coin listed successfully')
     } catch (err) {
-      setMsg(err.response?.data?.message || '上架失败')
+      setMsg(err.response?.data?.message || 'Failed to list coin')
     }
   }
 
@@ -50,9 +50,9 @@ export function CoinManagement() {
     try {
       await api.post(`/api/admin/coins/${symbol}/price`, { price: Number(value) })
       await load()
-      setMsg(`${symbol} 改价成功`)
+      setMsg(`${symbol} price updated`)
     } catch (err) {
-      setMsg(err.response?.data?.message || '改价失败')
+      setMsg(err.response?.data?.message || 'Failed to update price')
     }
   }
 
@@ -78,26 +78,26 @@ export function CoinManagement() {
       items: coins.filter((c) => !c.delisted).map((c) => ({ symbol: c.symbol, deltaPct: pct })),
     })
     await load()
-    setMsg(`全部币种已调整 ${pct}%`)
+    setMsg(`All coins adjusted by ${pct}%`)
   }
 
   return (
     <div className="space-y-6">
       <div className={card}>
-        <h2 className="text-xl font-bold mb-4">币种管理</h2>
+        <h2 className="text-xl font-bold mb-4">Coin Management</h2>
         {msg && <p className="text-sm text-emerald-400 mb-3">{msg}</p>}
         <form onSubmit={create} className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-          <input className={input} placeholder="代号" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} required />
-          <input className={input} placeholder="名称" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-          <input className={input} placeholder="初始价" type="number" step="any" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
-          <input className={input} placeholder="波动率" type="number" step="any" value={form.volatility} onChange={(e) => setForm({ ...form, volatility: e.target.value })} />
-          <input className={input} placeholder="小数位" type="number" value={form.decimals} onChange={(e) => setForm({ ...form, decimals: e.target.value })} />
-          <button className={primaryBtn} type="submit">上架</button>
+          <input className={input} placeholder="Symbol" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} required />
+          <input className={input} placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          <input className={input} placeholder="Initial price" type="number" step="any" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} required />
+          <input className={input} placeholder="Volatility" type="number" step="any" value={form.volatility} onChange={(e) => setForm({ ...form, volatility: e.target.value })} />
+          <input className={input} placeholder="Decimals" type="number" value={form.decimals} onChange={(e) => setForm({ ...form, decimals: e.target.value })} />
+          <button className={primaryBtn} type="submit">List</button>
         </form>
 
         <div className="flex items-center gap-3 mt-4">
-          <input className={`${input} max-w-[160px]`} placeholder="批量涨跌 %" type="number" step="any" value={deltaPct} onChange={(e) => setDeltaPct(e.target.value)} />
-          <button className={ghostBtn} onClick={batch}>应用到全部</button>
+          <input className={`${input} max-w-[160px]`} placeholder="Batch change %" type="number" step="any" value={deltaPct} onChange={(e) => setDeltaPct(e.target.value)} />
+          <button className={ghostBtn} onClick={batch}>Apply to all</button>
         </div>
       </div>
 
@@ -106,12 +106,12 @@ export function CoinManagement() {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-gray-700/50 text-gray-400">
-                <th className="px-4 py-3 text-left">币种</th>
-                <th className="px-4 py-3 text-left">价格</th>
-                <th className="px-4 py-3 text-left">模式</th>
-                <th className="px-4 py-3 text-left">涨跌</th>
-                <th className="px-4 py-3 text-left">改价</th>
-                <th className="px-4 py-3 text-left">操作</th>
+                <th className="px-4 py-3 text-left">Coin</th>
+                <th className="px-4 py-3 text-left">Price</th>
+                <th className="px-4 py-3 text-left">Mode</th>
+                <th className="px-4 py-3 text-left">Change</th>
+                <th className="px-4 py-3 text-left">Set Price</th>
+                <th className="px-4 py-3 text-left">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700/50">
@@ -124,7 +124,7 @@ export function CoinManagement() {
                   <td className="px-4 py-3 text-gray-100">{Number(c.price).toFixed(c.decimals)}</td>
                   <td className="px-4 py-3">
                     <span className={c.controlled ? 'text-emerald-400' : 'text-gray-400'}>
-                      {c.controlled ? '控价中' : c.autoSync ? '自动' : '冻结'}
+                      {c.controlled ? 'Managed' : c.autoSync ? 'Auto' : 'Frozen'}
                     </span>
                   </td>
                   <td className={`px-4 py-3 ${c.change24h >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -140,23 +140,23 @@ export function CoinManagement() {
                         value={prices[c.symbol] ?? ''}
                         onChange={(e) => setPrices({ ...prices, [c.symbol]: e.target.value })}
                       />
-                      <button className={ghostBtn} onClick={() => setPrice(c.symbol)}>改价</button>
+                      <button className={ghostBtn} onClick={() => setPrice(c.symbol)}>Set</button>
                     </div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2">
-                      {c.controlled && <button className={ghostBtn} onClick={() => release(c.symbol)}>交还自动</button>}
+                      {c.controlled && <button className={ghostBtn} onClick={() => release(c.symbol)}>Release to auto</button>}
                       {c.delisted ? (
-                        <button className={primaryBtn} onClick={() => restore(c.symbol)}>恢复</button>
+                        <button className={primaryBtn} onClick={() => restore(c.symbol)}>Restore</button>
                       ) : (
-                        <button className={dangerBtn} onClick={() => delist(c.symbol)}>下架</button>
+                        <button className={dangerBtn} onClick={() => delist(c.symbol)}>Delist</button>
                       )}
                     </div>
                   </td>
                 </tr>
               ))}
               {!coins.length && (
-                <tr><td colSpan="6" className="px-4 py-8 text-center text-gray-400">暂无币种</td></tr>
+                <tr><td colSpan="6" className="px-4 py-8 text-center text-gray-400">No coins yet</td></tr>
               )}
             </tbody>
           </table>
@@ -214,10 +214,10 @@ export function BotFormation() {
         counterRate: Number(form.counterRate),
         count: Number(form.count),
       })
-      setMsg(`编队已启动，机器人数量 ${res.data.count}`)
+      setMsg(`Formation started with ${res.data.count} bots`)
       await loadStatus()
     } catch (err) {
-      setMsg(err.response?.data?.message || '启动失败')
+      setMsg(err.response?.data?.message || 'Failed to start')
     }
   }
 
@@ -239,61 +239,61 @@ export function BotFormation() {
     <div className="space-y-6">
       <div className={card}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">机器人编队</h2>
-          <button className={dangerBtn} onClick={stopAll}>停止全部</button>
+          <h2 className="text-xl font-bold">Bot Formation</h2>
+          <button className={dangerBtn} onClick={stopAll}>Stop All</button>
         </div>
         {msg && <p className="text-sm text-emerald-400 mb-3">{msg}</p>}
         <form onSubmit={start} className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <select className={input} value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })}>
             {coins.map((c) => <option key={c.symbol} value={c.symbol}>{c.symbol}</option>)}
           </select>
-          <input className={input} placeholder="目标价" type="number" step="any" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} required />
+          <input className={input} placeholder="Target price" type="number" step="any" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} required />
           <select className={input} value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value })}>
             {['ramp', 'surge', 'stair', 'dump', 'walk'].map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
-          <input className={input} placeholder="机器人数" type="number" min="1" max="20" value={form.count} onChange={(e) => setForm({ ...form, count: e.target.value })} />
-          <button className={primaryBtn} type="submit">启动编队</button>
+          <input className={input} placeholder="Bot count" type="number" min="1" max="20" value={form.count} onChange={(e) => setForm({ ...form, count: e.target.value })} />
+          <button className={primaryBtn} type="submit">Start Formation</button>
 
           <label className="text-xs text-gray-400">
-            速度 {form.speed}
+            Speed {form.speed}
             <input type="range" min="0.5" max="5" step="0.1" value={form.speed} onChange={(e) => setForm({ ...form, speed: e.target.value })} className="w-full" />
           </label>
           <label className="text-xs text-gray-400">
-            间隔 ms
+            Interval ms
             <input className={input} type="number" value={form.intervalMs} onChange={(e) => setForm({ ...form, intervalMs: e.target.value })} />
           </label>
           <label className="text-xs text-gray-400">
-            单量
+            Order size
             <input className={input} type="number" step="any" value={form.avgSize} onChange={(e) => setForm({ ...form, avgSize: e.target.value })} />
           </label>
           <label className="text-xs text-gray-400">
-            强度
+            Intensity
             <input className={input} type="number" step="any" value={form.intensity} onChange={(e) => setForm({ ...form, intensity: e.target.value })} />
           </label>
           <label className="text-xs text-gray-400">
-            容差 %
+            Tolerance %
             <input className={input} type="number" step="any" value={form.tolerance} onChange={(e) => setForm({ ...form, tolerance: e.target.value })} />
           </label>
         </form>
       </div>
 
       <div className={card}>
-        {!groups.length && <p className="text-gray-400 text-sm">当前没有运行中的编队</p>}
+        {!groups.length && <p className="text-gray-400 text-sm">No active formations</p>}
         {groups.map((g) => (
           <div key={g.id} className="mb-6 last:mb-0">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-medium text-gray-200">编队 {g.id}</h3>
-              <button className={dangerBtn} onClick={() => stopGroup(g.id)}>停止</button>
+              <h3 className="font-medium text-gray-200">Formation {g.id}</h3>
+              <button className={dangerBtn} onClick={() => stopGroup(g.id)}>Stop</button>
             </div>
             <div className="space-y-2">
               {g.bots.map((b) => (
                 <div key={b.id} className="flex flex-wrap items-center gap-4 text-sm bg-gray-800/50 rounded-lg px-4 py-2">
                   <span className="text-gray-100">{b.name}</span>
                   <span className="text-gray-400">{b.symbol}</span>
-                  <span className="text-gray-400">目标 {b.target}</span>
-                  <span className={b.stopped ? 'text-gray-500' : 'text-emerald-400'}>{b.stopped ? '已停止' : '运行中'}</span>
+                  <span className="text-gray-400">Target {b.target}</span>
+                  <span className={b.stopped ? 'text-gray-500' : 'text-emerald-400'}>{b.stopped ? 'Stopped' : 'Running'}</span>
                   <label className="flex items-center gap-2 text-gray-400">
-                    速度
+                    Speed
                     <input
                       type="range"
                       min="0.5"
@@ -387,7 +387,7 @@ export function PriceChart() {
   return (
     <div className={card}>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold">价格走势</h2>
+        <h2 className="text-xl font-bold">Price Trend</h2>
         <select className={`${input} max-w-[160px]`} value={symbol} onChange={(e) => setSymbol(e.target.value)}>
           {coins.map((c) => <option key={c.symbol} value={c.symbol}>{c.symbol}</option>)}
         </select>
@@ -395,7 +395,7 @@ export function PriceChart() {
       <div className="h-80">
         <canvas ref={canvasRef}></canvas>
       </div>
-      {!points.length && <p className="text-sm text-gray-400 mt-2">等待实时价格推送...</p>}
+      {!points.length && <p className="text-sm text-gray-400 mt-2">Waiting for live price updates...</p>}
     </div>
   )
 }

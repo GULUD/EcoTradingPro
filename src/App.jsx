@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { AuthProvider } from './contexts/AuthContext'
@@ -8,16 +8,19 @@ import UserLogin from './components/auth/UserLogin'
 import UserRegister from './components/auth/UserRegister'
 import AdminLogin from './components/auth/AdminLogin'
 import ForceChangePassword from './components/auth/ForceChangePassword'
-import UserDashboard from './components/dashboard/UserDashboard'
-import AdminDashboard from './components/dashboard/AdminDashboard'
 import ProtectedRoute from './components/ProtectedRoute'
+
+// Dashboards are split out; anonymous visitors only download the landing bundle
+const UserDashboard = lazy(() => import('./components/dashboard/UserDashboard'))
+const AdminDashboard = lazy(() => import('./components/dashboard/AdminDashboard'))
 
 function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
         <WebSocketProvider>
-          <Routes>
+          <Suspense fallback={<div className="min-h-screen grid place-items-center text-sm text-gray-500">Loading...</div>}>
+            <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/auth/login" element={<UserLogin />} />
             <Route path="/auth/register" element={<UserRegister />} />
@@ -50,7 +53,8 @@ function App() {
             />
 
             <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+            </Routes>
+          </Suspense>
         </WebSocketProvider>
       </AuthProvider>
     </ThemeProvider>

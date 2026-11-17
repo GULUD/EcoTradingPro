@@ -1,29 +1,51 @@
 const prisma = require('../db')
 const { executeOrder } = require('./matchingEngine')
 
+const STALE_MS = 5 * 60 * 1000
+
 // Stop orders are stored as open schedule rows and claimed atomically before
 // firing, so two workers (or two ticks) can never execute the same schedule.
 // Firing creates an ordinary order, which keeps the matching engine unchanged.
 async function triggerStopOrders(io) {
-  const stops = await prisma.order.findMany({
-    where: { type: { in: ['stop_loss', 'stop_limit'] }, status: 'open' },
-    orderBy: { createdAt: 'asc' },
-    take: 50,
+  // A worker can die between claiming and executing; such rows would otherwise
+  // stay "triggered" forever and never trade. Cancel them after a grace period.
+  await prisma.order.updateMany({
+    where: {
+      status: 'triggered',
+      type: { in: ['stop_loss', 'stop_limit'] },
+      updatedAt: { lt: new Date(Date.now() - STALE_MS) },
+    },
+    data: { status: 'canceled' },
   })
-  if (!stops.length) return
 
-  const symbols = [...new Set(stops.map((o) => o.symbol))]
-  const coins = await prisma.marketData.findMany({ where: { symbol: { in: symbols } } })
-  // A delisted or unquoted market cannot trigger anything
-  const prices = new Map(coins.filter((c) => !c.delisted).map((c) => [c.symbol, c.price > 0 ? c.price : c.manualPrice]))
+  // Filter by the trigger condition inside the database. Taking the oldest N rows
+  // first let dormant stops starve every newer one, which silently disabled them.
+  const hits = await prisma.$queryRaw`
+    SELECT o.id
+    FROM "Order" o
+    JOIN "MarketData" m ON m.symbol = o.symbol
+    WHERE o.type IN ('stop_loss'::"OrderType", 'stop_limit'::"OrderType")
+      AND o.status = 'open'::"OrderStatus"
+      AND m.delisted = false
+      AND o."triggerPrice" > 0
+      AND (
+        (o.side = 'buy'::"Side" AND COALESCE(NULLIF(m.price, 0), m."manualPrice") >= o."triggerPrice")
+        OR
+        (o.side = 'sell'::"Side" AND COALESCE(NULLIF(m.price, 0), m."manualPrice") <= o."triggerPrice")
+      )
+    ORDER BY o."createdAt" ASC
+    LIMIT 50`
+
+  if (!hits.length) return
+  const ids = hits.map((r) => r.id)
+  const stops = await prisma.order.findMany({ where: { id: { in: ids }, status: 'open' } })
 
   for (const stop of stops) {
-    const last = prices.get(stop.symbol)
-    if (!(last > 0) || !(stop.triggerPrice > 0)) continue
-
-    // Buy stops activate on a rise, sell stops on a fall
-    const hit = stop.side === 'buy' ? last >= stop.triggerPrice : last <= stop.triggerPrice
-    if (!hit) continue
+    // Infinity or NaN cannot describe a price; drop the schedule instead of firing it
+    if (!Number.isFinite(stop.triggerPrice) || stop.triggerPrice <= 0) {
+      await prisma.order.update({ where: { id: stop.id }, data: { status: 'canceled' } })
+      continue
+    }
 
     const claimed = await prisma.order.updateMany({
       where: { id: stop.id, status: 'open' },

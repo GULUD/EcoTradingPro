@@ -46,32 +46,10 @@ function TradingBots() {
       })
       setBots(response.data)
     } catch (error) {
-      console.error('Error fetching trading bots:', error)
-      // Mock data for demo
-      setBots([
-        {
-          id: '1',
-          name: 'Grid Bot #1',
-          strategy: 'grid',
-          asset: 'BTC',
-          status: 'active',
-          profit: 245.67,
-          trades: 28,
-          createdAt: new Date('2024-01-15'),
-          performance: 12.5
-        },
-        {
-          id: '2',
-          name: 'DCA ETH Bot',
-          strategy: 'dca',
-          asset: 'ETH',
-          status: 'paused',
-          profit: -23.45,
-          trades: 15,
-          createdAt: new Date('2024-01-20'),
-          performance: -2.1
-        }
-      ])
+      console.error('[bots] fetch failed', error.message)
+      // Never invent bots: an API failure must surface as an empty list
+      setBots([])
+      setMessage(error.response?.data?.error || 'Failed to load trading bots')
     }
   }
 
@@ -314,7 +292,7 @@ function TradingBots() {
                 onClick={() => setShowCreateBot(false)}
                 className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
               >
-                ✕
+                &times;
               </button>
             </div>
 

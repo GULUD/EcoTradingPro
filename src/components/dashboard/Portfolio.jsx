@@ -347,7 +347,7 @@ function Portfolio() {
               <h3 className="text-xl font-bold mb-4">Portfolio Performance</h3>
               <div className="h-64 bg-gray-50 dark:bg-white/5 rounded-lg flex items-center justify-center">
                 <div className="text-center">
-                  <div className="text-4xl mb-2">📈</div>
+                  <i className="fas fa-chart-line text-4xl mb-2"></i>
                   <p className="text-gray-500">Portfolio chart coming soon</p>
                   <p className="text-sm text-gray-400 mt-1">30-day performance tracking</p>
                 </div>
