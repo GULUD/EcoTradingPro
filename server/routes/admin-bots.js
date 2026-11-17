@@ -8,13 +8,15 @@ const MODES = ['ramp', 'surge', 'stair', 'dump', 'walk']
 
 function expand(cfg) {
   const n = Math.max(1, Math.min(20, cfg.count ?? 1))
+  // A zero size produced trades with no quantity while still moving the price
+  const size = Number(cfg.avgSize)
   return Array.from({ length: n }, () => ({
     symbol: cfg.symbol,
     target: +cfg.target,
     mode: cfg.mode || 'ramp',
     speed: +(cfg.speed ?? 1),
     intervalMs: +(cfg.intervalMs ?? 3000),
-    avgSize: +(cfg.avgSize ?? 1),
+    avgSize: Number.isFinite(size) && size > 0 ? size : 1,
     intensity: +(cfg.intensity ?? 0.6),
     tolerance: +(cfg.tolerance ?? 0.005),
     counterRate: +(cfg.counterRate ?? 0.2),

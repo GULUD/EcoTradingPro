@@ -37,12 +37,13 @@ function UserRegister() {
     })
     
     if (result.success) {
-      setSuccess('Account created successfully! Redirecting to login...')
-      setTimeout(() => navigate('/auth/login'), 2000)
+      // Registration already stores the token, so the account is signed in
+      setSuccess('Account created successfully! Redirecting to your dashboard...')
+      setTimeout(() => navigate('/dashboard'), 1500)
     } else {
       setError(result.error)
     }
-    
+
     setLoading(false)
   }
 

@@ -90,7 +90,16 @@ router.post('/user/register', authLimiter, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' })
     }
 
-    const normalized = String(email).toLowerCase()
+    const normalized = String(email).trim().toLowerCase()
+    // The form checked this in the browser, but the API must not store unusable addresses
+    if (normalized.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+      return res.status(400).json({ success: false, error: 'Enter a valid email address' })
+    }
+    const first = String(firstName).trim()
+    const last = String(lastName).trim()
+    if (!first || !last || first.length > 60 || last.length > 60) {
+      return res.status(400).json({ success: false, error: 'First and last name are required' })
+    }
     const existing = await prisma.user.findUnique({ where: { email: normalized } })
     if (existing) {
       // Same wording as a failed signup for other reasons, so the endpoint cannot be used to enumerate accounts
@@ -101,8 +110,8 @@ router.post('/user/register', authLimiter, async (req, res, next) => {
       data: {
         email: normalized,
         password: await bcrypt.hash(password, 12),
-        firstName,
-        lastName,
+        firstName: first,
+        lastName: last,
         // GULU is issued by the operator or bought P2P, never granted at signup
         balance: 0,
         isActive: true,

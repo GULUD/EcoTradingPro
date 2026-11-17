@@ -39,6 +39,8 @@ async function step(bot, io) {
   if (bot.mode === 'dump') intensity *= 1.5
 
   const qty = +lognormal(Math.log(bot.avgSize), 0.7).toFixed(c.decimals)
+  // Never print a zero-size fill or move the price without a trade behind it
+  if (!(qty > 0)) return
   const impact = (up ? 1 : -1) * Math.abs(gap) * 0.02 * intensity * (0.5 + Math.random())
   const noise = ((Math.random() - 0.5) * c.volatility) / 100 * anchor
   const next = +(anchor * (1 + impact) + noise).toFixed(c.decimals)
@@ -107,7 +109,7 @@ function startGroup(io, cfg) {
       name: b.name || `${pick(PREFIX)}_${Math.random().toString(36).slice(2, 7)}`,
       intervalMs: Math.max(500, Number(b.intervalMs) || 3000),
       speed: Math.max(0.1, Number(b.speed) || 1),
-      avgSize: Number(b.avgSize) > 0 ? Number(b.avgSize) : 0,
+      avgSize: Number(b.avgSize) > 0 ? Number(b.avgSize) : 1,
       startGap: (b.target - (b.startPrice || b.target)) / (b.startPrice || b.target),
       stopped: false,
     }))

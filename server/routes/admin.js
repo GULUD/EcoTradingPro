@@ -150,13 +150,14 @@ router.post('/news', authenticateToken, requireAdmin, async (req, res, next) => 
   try {
     const { title, content, author, category, priority, isPublished } = req.body
     if (!title) return res.status(400).json({ success: false, message: 'title required' })
+    const rank = Number(priority)
     const news = await prisma.news.create({
       data: {
         title,
         content: content || '',
         author: author || req.user.name,
         category: category || null,
-        priority: Number.isFinite(+priority) ? +priority : 0,
+        priority: Number.isFinite(rank) ? Math.trunc(rank) : 0,
         isPublished: isPublished !== false,
       },
     })
@@ -193,7 +194,14 @@ router.put('/news/:newsId', authenticateToken, requireAdmin, async (req, res, ne
     if (content !== undefined) data.content = content
     if (isPublished !== undefined) data.isPublished = isPublished
     if (category !== undefined) data.category = category
-    if (priority !== undefined) data.priority = +priority
+    if (priority !== undefined) {
+      // priority is an Int column; a non-numeric value would abort the whole update
+      const rank = Number(priority)
+      if (!Number.isFinite(rank)) {
+        return res.status(400).json({ success: false, message: 'priority must be a number' })
+      }
+      data.priority = Math.trunc(rank)
+    }
 
     const news = await prisma.news.update({ where: { id: req.params.newsId }, data })
     res.json(toNewsDto(news))

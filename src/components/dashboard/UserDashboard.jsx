@@ -11,6 +11,7 @@ const Portfolio = lazy(() => import('./Portfolio'))
 const Trading = lazy(() => import('./Trading'))
 const Analytics = lazy(() => import('./Analytics'))
 const Notifications = lazy(() => import('./Notifications'))
+const News = lazy(() => import('./News'))
 const OrderHistory = lazy(() => import('./OrderHistory'))
 const Watchlist = lazy(() => import('./Watchlist'))
 const AdvancedCharts = lazy(() => import('./AdvancedCharts'))
@@ -114,6 +115,10 @@ function UserDashboard() {
               <i className="fas fa-chart-line text-lg"></i>
               {!sidebarCollapsed && <span>Advanced Charts</span>}
             </Link>
+            <Link to="/dashboard/news" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
+              <i className="fas fa-newspaper text-lg"></i>
+              {!sidebarCollapsed && <span>News</span>}
+            </Link>
             <Link to="/dashboard/notifications" className="flex items-center gap-4 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 mb-2">
               <i className="fas fa-bell text-lg"></i>
               {!sidebarCollapsed && <span>Notifications</span>}
@@ -210,6 +215,7 @@ function UserDashboard() {
               <Route path="/trading" element={<Trading />} />
               <Route path="/p2p" element={<P2P />} />
               <Route path="/analytics" element={<Analytics />} />
+              <Route path="/news" element={<News />} />
               <Route path="/notifications" element={<Notifications />} />
               {/* New Routes */}
               <Route path="/order-history" element={<OrderHistory />} />

@@ -56,29 +56,50 @@ export function CoinManagement() {
     }
   }
 
-  const release = async (symbol) => {
-    await api.post(`/api/admin/coins/${symbol}/release`)
-    await load()
+  // Every control reports failure instead of leaving an unhandled rejection
+  const runAction = async (action, success) => {
+    try {
+      await action()
+      setMsg(success)
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'Request failed')
+    }
   }
 
-  const delist = async (symbol) => {
-    await api.delete(`/api/admin/coins/${symbol}`)
-    await load()
-  }
+  const release = (symbol) =>
+    runAction(async () => {
+      await api.post(`/api/admin/coins/${symbol}/release`)
+      await load()
+    }, `${symbol} released to automatic pricing`)
 
-  const restore = async (symbol) => {
-    await api.post(`/api/admin/coins/${symbol}/restore`)
-    await load()
-  }
+  const delist = (symbol) =>
+    runAction(async () => {
+      await api.delete(`/api/admin/coins/${symbol}`)
+      await load()
+    }, `${symbol} delisted`)
+
+  const restore = (symbol) =>
+    runAction(async () => {
+      await api.post(`/api/admin/coins/${symbol}/restore`)
+      await load()
+    }, `${symbol} restored`)
 
   const batch = async () => {
     const pct = Number(deltaPct)
-    if (!Number.isFinite(pct) || !coins.length) return
-    await api.post('/api/admin/prices/batch', {
-      items: coins.filter((c) => !c.delisted).map((c) => ({ symbol: c.symbol, deltaPct: pct })),
-    })
-    await load()
-    setMsg(`All coins adjusted by ${pct}%`)
+    if (!Number.isFinite(pct)) {
+      setMsg('Enter a percentage to apply')
+      return
+    }
+    if (!coins.some((c) => !c.delisted)) {
+      setMsg('No listed coin to adjust')
+      return
+    }
+    runAction(async () => {
+      await api.post('/api/admin/prices/batch', {
+        items: coins.filter((c) => !c.delisted).map((c) => ({ symbol: c.symbol, deltaPct: pct })),
+      })
+      await load()
+    }, `All coins adjusted by ${pct}%`)
   }
 
   return (
@@ -115,7 +136,9 @@ export function CoinManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-700/50">
-              {coins.map((c) => (
+              {coins.map((c) => {
+                const change = Number(c.change24h) || 0
+                return (
                 <tr key={c.symbol} className={c.delisted ? 'opacity-50' : ''}>
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-100">{c.symbol}</div>
@@ -127,8 +150,8 @@ export function CoinManagement() {
                       {c.controlled ? 'Managed' : c.autoSync ? 'Auto' : 'Frozen'}
                     </span>
                   </td>
-                  <td className={`px-4 py-3 ${c.change24h >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {c.change24h > 0 ? '+' : ''}{c.change24h}%
+                  <td className={`px-4 py-3 ${change >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {change > 0 ? '+' : ''}{change.toFixed(2)}%
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -154,7 +177,8 @@ export function CoinManagement() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
               {!coins.length && (
                 <tr><td colSpan="6" className="px-4 py-8 text-center text-gray-400">No coins yet</td></tr>
               )}
@@ -222,17 +246,29 @@ export function BotFormation() {
   }
 
   const stopGroup = async (id) => {
-    await api.delete(`/api/admin/bot-groups/${id}`)
-    await loadStatus()
+    try {
+      await api.delete(`/api/admin/bot-groups/${id}`)
+      await loadStatus()
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'Failed to stop formation')
+    }
   }
 
   const stopAll = async () => {
-    await api.post('/api/admin/bot-groups/stop-all')
-    await loadStatus()
+    try {
+      await api.post('/api/admin/bot-groups/stop-all')
+      await loadStatus()
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'Failed to stop formations')
+    }
   }
 
   const patchSpeed = async (botId, speed) => {
-    await api.patch(`/api/admin/bot-groups/bots/${botId}`, { speed: Number(speed) })
+    try {
+      await api.patch(`/api/admin/bot-groups/bots/${botId}`, { speed: Number(speed) })
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'Failed to update speed')
+    }
   }
 
   return (

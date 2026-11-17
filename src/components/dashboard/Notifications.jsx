@@ -1,10 +1,25 @@
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
+import axios from '../../utils/axios'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 
 function Notifications() {
   const { notifications, clearNotifications, removeNotification, isConnected } = useWebSocket()
   const [filter, setFilter] = useState('all')
+  const [announcements, setAnnouncements] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+    axios
+      .get('/api/announcements')
+      .then((response) => {
+        if (!cancelled) setAnnouncements(Array.isArray(response.data) ? response.data : [])
+      })
+      .catch((error) => console.error('[announcements] fetch failed', error.message))
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const filteredNotifications = notifications.filter(notification => {
     if (filter === 'all') return true
@@ -68,6 +83,30 @@ function Notifications() {
           )}
         </div>
       </div>
+
+      {/* Announcements are published by the operator and are not user-specific */}
+      {announcements.length > 0 && (
+        <div className="glass rounded-2xl p-6">
+          <h3 className="text-lg font-semibold mb-4">Platform announcements</h3>
+          <div className="space-y-3">
+            {announcements.map((item) => (
+              <div key={item.id} className="p-4 rounded-lg bg-gray-50 dark:bg-white/5">
+                <div className="flex items-start justify-between gap-3">
+                  <h4 className="font-semibold text-sm">{item.title}</h4>
+                  <span className="text-xs text-gray-500 shrink-0">
+                    {new Date(item.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                {item.content && (
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 whitespace-pre-wrap">
+                    {item.content}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Notifications List */}
       <div className="glass rounded-2xl p-6">

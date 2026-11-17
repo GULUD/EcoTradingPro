@@ -1,90 +1,78 @@
 
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTheme } from '../contexts/ThemeContext'
-import Chart from 'chart.js/auto'
+import { API_BASE } from '../utils/api'
+
+const fmtPrice = (value) => Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 })
 
 function LandingPage() {
   const { theme, toggleTheme } = useTheme()
-  const heroChartRef = useRef(null)
-  const roiChartRef = useRef(null)
+  const [markets, setMarkets] = useState([])
+  const [focusSymbol, setFocusSymbol] = useState('')
+  const [orderBook, setOrderBook] = useState({ bids: [], asks: [] })
+  const [marketError, setMarketError] = useState('')
+
+  // The landing page shows the same public market feed as the dashboard; no
+  // invented prices or projected returns are presented as platform data
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/market/prices`)
+        if (!response.ok) throw new Error('market request failed')
+        const payload = await response.json()
+        if (cancelled) return
+        const rows = Object.values(payload || {})
+          .filter((row) => row && row.symbol && Number(row.price) > 0)
+          .map((row) => ({
+            symbol: row.symbol,
+            name: row.name || row.symbol,
+            price: Number(row.price),
+            change24h: Number(row.change24h ?? row.change) || 0,
+            volume24h: Number(row.volume24h ?? row.volume) || 0,
+          }))
+          .sort((a, b) => b.volume24h - a.volume24h || a.symbol.localeCompare(b.symbol))
+        setMarkets(rows)
+        setMarketError('')
+        setFocusSymbol((prev) => prev || rows[0]?.symbol || '')
+      } catch (error) {
+        if (!cancelled) setMarketError('Live market data is unavailable right now.')
+      }
+    }
+
+    load()
+    const timer = setInterval(load, 30000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [])
 
   useEffect(() => {
-    // Charts must be destroyed on unmount; otherwise a remount reuses a canvas that still owns an instance
-    const charts = []
+    if (!focusSymbol) return
+    let cancelled = false
 
-    // Hero Chart
-    if (heroChartRef.current) {
-      const existing = Chart.getChart(heroChartRef.current)
-      if (existing) existing.destroy()
-      const ctx = heroChartRef.current.getContext('2d')
-      // Deterministic preview curve: the landing page must not present random data as a chart
-      const previewSeries = (n = 60, start = 68300) =>
-        Array.from({ length: n }, (_, i) => start + Math.sin(i / 4) * 320 + i * 14)
-
-      charts.push(
-        new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: Array.from({ length: 60 }, (_, i) => i),
-          datasets: [{
-            data: previewSeries(60, 68300),
-            tension: 0.35,
-            fill: true,
-            borderWidth: 2,
-            pointRadius: 0,
-            borderColor: 'rgba(10,132,255,1)',
-            backgroundColor: 'rgba(10,132,255,.12)'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { enabled: false } },
-          scales: {
-            x: { display: false },
-            y: { display: false }
-          },
-          animation: { duration: 1500 }
-        }
-        })
-      )
+    const load = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/market/orderbook/${focusSymbol}?depth=5`)
+        if (!response.ok) return
+        const payload = await response.json()
+        if (cancelled) return
+        setOrderBook({ bids: payload.bids || [], asks: payload.asks || [] })
+      } catch (error) {
+        // Keep the last good snapshot rather than blanking the panel
+      }
     }
 
-    // ROI Chart
-    if (roiChartRef.current) {
-      const existing = Chart.getChart(roiChartRef.current)
-      if (existing) existing.destroy()
-      const ctx = roiChartRef.current.getContext('2d')
-      charts.push(
-        new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: Array.from({ length: 24 }, (_, i) => `M${i + 1}`),
-          datasets: [{
-            label: 'Projected',
-            data: Array.from({ length: 24 }, (_, i) => 1000 * Math.pow(1.08, i / 12) + 200 * i),
-            borderColor: 'rgba(16,185,129,1)',
-            backgroundColor: 'rgba(16,185,129,.12)',
-            tension: 0.35,
-            pointRadius: 0,
-            fill: true
-          }]
-        },
-        options: {
-          responsive: true,
-          plugins: { legend: { display: false } },
-          scales: {
-            x: { ticks: { color: '#9CA3AF' } },
-            y: { ticks: { color: '#9CA3AF' } }
-          }
-        }
-        })
-      )
+    load()
+    const timer = setInterval(load, 10000)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
     }
-
-    return () => charts.forEach((chart) => chart.destroy())
-  }, [])
+  }, [focusSymbol])
 
   return (
     <div className="bg-white text-gray-900 dark:bg-[#0A0F1A] dark:text-gray-100">
@@ -178,37 +166,36 @@ function LandingPage() {
               <div className="relative">
                 <div className="absolute -top-6 right-6 w-12 h-12 rounded-full bg-gradient-to-br from-brand-500 to-emerald-500 animate-float-slow shadow-glow"></div>
 
-                <div className="glass rounded-3xl p-4 shadow-glow">
-                  <div className="grid sm:grid-cols-5 gap-3">
-                    <div className="sm:col-span-2 bg-black/5 dark:bg-white/5 rounded-2xl p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500">Order Book</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">BTC/GULU</span>
-                      </div>
-                      <div className="mt-2 space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-red-400">68,320</span><span>0.512</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-red-400">68,310</span><span>0.884</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-emerald-400">68,340</span><span>0.213</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-emerald-400">68,355</span><span>1.003</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="sm:col-span-3 bg-white dark:bg-[#0B1324] rounded-2xl p-3 border border-black/5 dark:border-white/5">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs font-semibold">BTC/GULU</div>
-                        <div className="text-xs text-gray-500">1h</div>
-                      </div>
-                      <canvas ref={heroChartRef} height="160"></canvas>
-                    </div>
+                <div className="glass rounded-3xl p-5 shadow-glow">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs uppercase tracking-wider text-gray-500">Live Markets</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">GULU pairs</span>
                   </div>
+                  {markets.length === 0 ? (
+                    <p className="text-sm text-gray-500 py-12 text-center">
+                      {marketError || 'Loading live prices...'}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {markets.slice(0, 5).map((market) => (
+                        <div
+                          key={market.symbol}
+                          className="flex items-center justify-between bg-black/5 dark:bg-white/5 rounded-xl px-4 py-3"
+                        >
+                          <div>
+                            <div className="font-semibold">{market.symbol}/GULU</div>
+                            <div className="text-xs text-gray-500">{market.name}</div>
+                          </div>
+                          <div className="text-right tabular-nums">
+                            <div className="font-semibold">{fmtPrice(market.price)} GULU</div>
+                            <div className={`text-xs ${market.change24h >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                              {market.change24h >= 0 ? '+' : ''}{market.change24h.toFixed(2)}%
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -220,12 +207,20 @@ function LandingPage() {
       <section className="py-3 border-y border-black/5 dark:border-white/5 bg-white/60 dark:bg-white/5 backdrop-blur">
         <div className="max-w-7xl mx-auto overflow-hidden px-4">
           <div className="flex gap-8 animate-marquee whitespace-nowrap text-sm font-medium">
-            <div className="flex items-center gap-2"><span className="text-gray-500">BTC</span><span>67,850 GULU</span><span className="text-emerald-500">+1.2%</span></div>
-            <div className="flex items-center gap-2"><span className="text-gray-500">ETH</span><span>3,210 GULU</span><span className="text-red-500">-0.4%</span></div>
-            <div className="flex items-center gap-2"><span className="text-gray-500">SOL</span><span>182.4 GULU</span><span className="text-emerald-500">+2.1%</span></div>
-            <div className="flex items-center gap-2"><span className="text-gray-500">XRP</span><span>0.62 GULU</span><span className="text-emerald-500">+0.7%</span></div>
-            <div className="flex items-center gap-2"><span className="text-gray-500">BNB</span><span>598.3 GULU</span><span className="text-emerald-500">+0.9%</span></div>
-            <div className="flex items-center gap-2"><span className="text-gray-500">ADA</span><span>0.52 GULU</span><span className="text-red-500">-0.3%</span></div>
+            {markets.length === 0 && (
+              <div className="flex items-center gap-2 text-gray-500">
+                {marketError || 'Live market data is loading...'}
+              </div>
+            )}
+            {markets.map((market) => (
+              <div key={market.symbol} className="flex items-center gap-2">
+                <span className="text-gray-500">{market.symbol}</span>
+                <span>{fmtPrice(market.price)} GULU</span>
+                <span className={market.change24h >= 0 ? 'text-emerald-500' : 'text-red-500'}>
+                  {market.change24h >= 0 ? '+' : ''}{market.change24h.toFixed(2)}%
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -312,11 +307,35 @@ function LandingPage() {
               </Link>
             </div>
 
-            <div className="bg-white dark:bg-[#0B1324] border border-black/5 dark:border-white/5 rounded-2xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold">Portfolio Overview</span>
+            <div className="bg-white dark:bg-[#0B1324] border border-black/5 dark:border-white/5 rounded-2xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-xs font-semibold">{focusSymbol || 'GULU'}/GULU Order Book</span>
+                <span className="text-[11px] text-gray-500">Live</span>
               </div>
-              <canvas ref={roiChartRef} height="220"></canvas>
+              {orderBook.asks.length === 0 && orderBook.bids.length === 0 ? (
+                <p className="text-sm text-gray-500 py-16 text-center">No resting orders right now.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 text-sm tabular-nums">
+                  <div>
+                    <div className="text-xs text-red-500 mb-2">Asks</div>
+                    {orderBook.asks.slice(0, 5).reverse().map((level) => (
+                      <div key={`ask-${level.price}`} className="flex justify-between py-1">
+                        <span className="text-red-500">{fmtPrice(level.price)}</span>
+                        <span className="text-gray-500">{Number(level.size).toFixed(4)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div>
+                    <div className="text-xs text-emerald-500 mb-2">Bids</div>
+                    {orderBook.bids.slice(0, 5).map((level) => (
+                      <div key={`bid-${level.price}`} className="flex justify-between py-1">
+                        <span className="text-emerald-500">{fmtPrice(level.price)}</span>
+                        <span className="text-gray-500">{Number(level.size).toFixed(4)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -329,7 +348,7 @@ function LandingPage() {
           <div className="mt-8 space-y-4">
             <details className="group rounded-xl border border-black/5 dark:border-white/5 p-4">
               <summary className="cursor-pointer font-semibold">Which markets are supported?</summary>
-              <p className="mt-2 text-gray-600 dark:text-gray-300">Spot markets for BTC, ETH, SOL, XRP, BNB, ADA, DOT, LINK, MATIC and UNI, all quoted against GULU, with new listings added continuously.</p>
+              <p className="mt-2 text-gray-600 dark:text-gray-300">Every listed spot market is quoted against GULU. The live list, prices and 24h changes on this page and in the dashboard always reflect the current listings.</p>
             </details>
             <details className="group rounded-xl border border-black/5 dark:border-white/5 p-4">
               <summary className="cursor-pointer font-semibold">Which order types can I place?</summary>
@@ -341,7 +360,7 @@ function LandingPage() {
             </details>
             <details className="group rounded-xl border border-black/5 dark:border-white/5 p-4">
               <summary className="cursor-pointer font-semibold">Do you offer an API?</summary>
-              <p className="mt-2 text-gray-600 dark:text-gray-300">Yes. REST endpoints cover market data, account state and order placement, and a WebSocket stream pushes prices and executions in real time.</p>
+              <p className="mt-2 text-gray-600 dark:text-gray-300">Yes. The platform runs on public REST market-data endpoints and an authenticated WebSocket feed that pushes prices and executions in real time; the dashboard is built on the same interfaces.</p>
             </details>
           </div>
         </div>
@@ -350,8 +369,8 @@ function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-black/5 dark:border-white/5 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            <div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2">
               <div className="flex items-center gap-2">
                 <svg className="w-8 h-8" viewBox="0 0 64 64" fill="none">
                   <circle cx="32" cy="32" r="28" fill="#0A84FF" opacity=".14"/>
@@ -365,25 +384,10 @@ function LandingPage() {
               <h4 className="font-semibold">Platform</h4>
               <ul className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
                 <li><a href="#features" className="hover:text-brand-500">Features</a></li>
-                <li><a href="#" className="hover:text-brand-500">API</a></li>
-                <li><a href="#" className="hover:text-brand-500">Documentation</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold">Company</h4>
-              <ul className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                <li><a href="#" className="hover:text-brand-500">About</a></li>
-                <li><a href="#" className="hover:text-brand-500">Blog</a></li>
-                <li><a href="#" className="hover:text-brand-500">Careers</a></li>
-                <li><a href="#" className="hover:text-brand-500">Contact</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold">Legal</h4>
-              <ul className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                <li><a href="#" className="hover:text-brand-500">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-brand-500">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-brand-500">Disclaimer</a></li>
+                <li><a href="#trading" className="hover:text-brand-500">Trading</a></li>
+                <li><a href="#faq" className="hover:text-brand-500">FAQ</a></li>
+                <li><Link to="/auth/login" className="hover:text-brand-500">Sign in</Link></li>
+                <li><Link to="/auth/register" className="hover:text-brand-500">Create account</Link></li>
               </ul>
             </div>
           </div>

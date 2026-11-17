@@ -10,12 +10,16 @@ const num = (v) => {
   return Number.isFinite(n) ? n : NaN
 }
 
+const MERCHANT_STATUSES = ['pending', 'approved', 'rejected', 'suspended']
+const ORDER_STATUSES = ['pending_payment', 'paid', 'completed', 'cancelled', 'disputed']
+
 // --- merchant review ---
 
 router.get('/p2p/merchants', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const status = req.query.status
-    const where = status && status !== 'all' ? { status } : {}
+    // An unknown value cannot reach a Postgres enum, it would fail the whole request
+    const status = MERCHANT_STATUSES.includes(req.query.status) ? req.query.status : null
+    const where = status ? { status } : {}
     const merchants = await prisma.merchant.findMany({
       where,
       include: { user: true, ads: { select: { id: true, status: true } } },
@@ -72,8 +76,8 @@ router.post('/p2p/merchants/:id/review', authenticateToken, requireAdmin, async 
 
 router.get('/p2p/orders', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const status = req.query.status
-    const where = status && status !== 'all' ? { status } : {}
+    const status = ORDER_STATUSES.includes(req.query.status) ? req.query.status : null
+    const where = status ? { status } : {}
     const orders = await prisma.p2POrder.findMany({
       where,
       include: {

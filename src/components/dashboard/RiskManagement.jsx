@@ -263,7 +263,7 @@ const RiskManagement = () => {
               <div className="flex justify-between items-center">
                 <span>Tracking Error</span>
                 <span className="font-semibold">
-                  {risk ? fmtGulu(risk.trackingError) : EMPTY}
+                  {risk?.trackingError == null ? EMPTY : `${Number(risk.trackingError).toFixed(2)}%`}
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -273,7 +273,9 @@ const RiskManagement = () => {
               <div className="flex justify-between items-center">
                 <span>Largest Position</span>
                 <span className="font-semibold">
-                  {risk ? `${Number(risk.concentrationRisk).toFixed(1)}%` : EMPTY}
+                  {risk?.concentrationRisk == null
+                    ? EMPTY
+                    : `${Number(risk.concentrationRisk).toFixed(1)}%`}
                 </span>
               </div>
               <div className="flex justify-between items-center">

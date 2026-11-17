@@ -294,9 +294,9 @@ const PerformanceAnalytics = () => {
               <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-white/5">
                 <span>Realized P&amp;L</span>
                 <span className={`font-semibold ${
-                  Number(performance?.totalPnL) >= 0 ? 'text-green-500' : 'text-red-500'
+                  Number(performance?.realizedPnL) >= 0 ? 'text-green-500' : 'text-red-500'
                 }`}>
-                  {performance ? fmtGulu(performance.totalPnL) : EMPTY}
+                  {performance ? fmtGulu(performance.realizedPnL) : EMPTY}
                 </span>
               </div>
               <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-white/5">
