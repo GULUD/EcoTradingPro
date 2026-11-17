@@ -111,7 +111,6 @@ function LandingPage() {
               <div className="hidden md:flex items-center gap-8">
                 <a href="#features" className="hover:text-brand-500 transition">Features</a>
                 <a href="#trading" className="hover:text-brand-500 transition">Trading</a>
-                <a href="#pricing" className="hover:text-brand-500 transition">Pricing</a>
                 <a href="#faq" className="hover:text-brand-500 transition">FAQ</a>
               </div>
 
@@ -327,62 +326,6 @@ function LandingPage() {
         </div>
       </section>
 
-      {/* Pricing Section */}
-      <section id="pricing" className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl font-extrabold">Choose your trading plan</h2>
-          <p className="mt-2 text-gray-600 dark:text-gray-300">Start free and upgrade when you're ready for advanced features.</p>
-
-          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-2xl border border-black/5 dark:border-white/5 p-6">
-              <h3 className="font-semibold text-lg">Starter</h3>
-              <p className="mt-1 text-sm text-gray-500">For individual traders getting started</p>
-              <div className="mt-5 text-4xl font-extrabold">Free</div>
-              <ul className="mt-5 space-y-2 text-sm text-gray-600 dark:text-gray-300 text-left">
-                <li>• Instant account activation</li>
-                <li>• Basic market data</li>
-                <li>• 5 crypto pairs</li>
-                <li>• Community support</li>
-              </ul>
-              <Link to="/auth/register" className="mt-6 inline-block w-full px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600">
-                Get Started
-              </Link>
-            </div>
-
-            <div className="rounded-2xl border-2 border-brand-500 p-6 shadow-glow">
-              <h3 className="font-semibold text-lg">Pro Trader</h3>
-              <p className="mt-1 text-sm text-gray-500">Advanced features for serious traders</p>
-              <div className="mt-5 text-4xl font-extrabold">$29<span className="text-base font-bold">/mo</span></div>
-              <ul className="mt-5 space-y-2 text-sm text-gray-600 dark:text-gray-300 text-left">
-                <li>• Unlimited order history</li>
-                <li>• Real-time market data</li>
-                <li>• 150+ crypto pairs</li>
-                <li>• Advanced analytics</li>
-                <li>• Priority support</li>
-              </ul>
-              <Link to="/auth/register" className="mt-6 inline-block w-full px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600">
-                Upgrade to Pro
-              </Link>
-            </div>
-
-            <div className="rounded-2xl border border-black/5 dark:border-white/5 p-6">
-              <h3 className="font-semibold text-lg">Enterprise</h3>
-              <p className="mt-1 text-sm text-gray-500">Custom solutions for institutions</p>
-              <div className="mt-5 text-4xl font-extrabold">Custom</div>
-              <ul className="mt-5 space-y-2 text-sm text-gray-600 dark:text-gray-300 text-left">
-                <li>• Custom integration</li>
-                <li>• Dedicated support</li>
-                <li>• White-label options</li>
-                <li>• Admin management tools</li>
-              </ul>
-              <a href="#contact" className="mt-6 inline-block w-full px-4 py-2 rounded-lg border border-brand-500 text-brand-600 hover:bg-brand-50 dark:hover:bg-white/5">
-                Contact Sales
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* FAQ Section */}
       <section id="faq" className="py-16">
         <div className="max-w-5xl mx-auto px-4">
@@ -426,7 +369,6 @@ function LandingPage() {
               <h4 className="font-semibold">Platform</h4>
               <ul className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
                 <li><a href="#features" className="hover:text-brand-500">Features</a></li>
-                <li><a href="#pricing" className="hover:text-brand-500">Pricing</a></li>
                 <li><a href="#" className="hover:text-brand-500">API</a></li>
                 <li><a href="#" className="hover:text-brand-500">Documentation</a></li>
               </ul>
