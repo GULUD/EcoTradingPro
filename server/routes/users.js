@@ -83,18 +83,78 @@ function normalizeOrder(body) {
   const symbol = String(body.symbol || body.asset || '').toUpperCase().split('/')[0]
   const side = body.side || (['buy', 'sell'].includes(body.type) ? body.type : null)
   const rawType = body.orderType || body.type
-  const stop = ['stop-loss', 'stop-limit'].includes(rawType)
+  const stopType =
+    rawType === 'stop-loss' || rawType === 'stop_loss'
+      ? 'stop_loss'
+      : rawType === 'stop-limit' || rawType === 'stop_limit'
+        ? 'stop_limit'
+        : null
   // Legacy clients send side in `type` and still pass a price; those are limit orders
   const legacyWithPrice = ['buy', 'sell'].includes(rawType) && body.price != null
   const type = ['limit', 'stop-loss', 'stop-limit'].includes(rawType) || legacyWithPrice ? 'limit' : 'market'
   const price = body.price != null ? +body.price : null
+  const triggerPrice = body.triggerPrice != null ? +body.triggerPrice : null
   let amount = body.amount != null ? +body.amount : null
   let size = body.size != null ? +body.size : null
   if (amount == null && body.quantity != null) {
     if (side === 'buy') amount = +body.quantity * +(body.price || 0)
     else size = +body.quantity
   }
-  return { symbol, side, type, price, amount, size, stop }
+  return { symbol, side, type, price, amount, size, stopType, triggerPrice }
+}
+
+async function placeStopOrder(req, res, payload) {
+  const { symbol, side, stopType, price, triggerPrice } = payload
+  // Stop schedules are always sized in base units so the fired trade matches the plan
+  const size = payload.size != null ? payload.size : payload.amount
+  if (!(triggerPrice > 0)) {
+    return res.status(400).json({ success: false, error: 'triggerPrice must be greater than zero' })
+  }
+  if (!(size > 0)) {
+    return res.status(400).json({ success: false, error: 'size must be greater than zero' })
+  }
+  if (stopType === 'stop_limit' && !(price > 0)) {
+    return res.status(400).json({ success: false, error: 'limit price required for a stop-limit order' })
+  }
+  if (stopType === 'stop_limit' && Math.abs(price / triggerPrice - 1) > 0.2) {
+    return res.status(400).json({ success: false, error: 'limit price is too far from the trigger price' })
+  }
+
+  const coin = await prisma.marketData.findUnique({ where: { symbol } })
+  if (!coin || coin.delisted) {
+    return res.status(400).json({ success: false, error: 'market not available' })
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: req.user.id } })
+  if (!user) return res.status(401).json({ success: false, error: 'user not found' })
+
+  // Nothing is locked while a stop waits, so require funding up front and re-check on firing
+  const reference = stopType === 'stop_limit' ? price : triggerPrice * 1.01
+  if (side === 'buy' && user.balance + 1e-9 < size * reference) {
+    return res.status(400).json({ success: false, error: 'insufficient balance' })
+  }
+  if (side === 'sell' && Number((user.portfolio || {})[symbol] || 0) + 1e-9 < size) {
+    return res.status(400).json({ success: false, error: 'insufficient holdings' })
+  }
+
+  const order = await prisma.order.create({
+    data: {
+      userId: user.id,
+      symbol,
+      side,
+      type: stopType,
+      // The display price is the activation level unless a limit price was given
+      price: stopType === 'stop_limit' ? price : triggerPrice,
+      triggerPrice,
+      size,
+      status: 'open',
+    },
+  })
+
+  const io = req.app.get('io')
+  if (io) io.to(`user-${user.id}`).emit('order:update', { orderId: order.id, status: 'open' })
+
+  return res.status(201).json({ success: true, order: orderDto(order), balance: user.balance, portfolio: user.portfolio })
 }
 
 async function placeOrder(req, res, next) {
@@ -103,9 +163,8 @@ async function placeOrder(req, res, next) {
     if (!payload.symbol || !['buy', 'sell'].includes(payload.side)) {
       return res.status(400).json({ success: false, error: 'symbol and side are required' })
     }
-    // A stop order executed as a plain limit order would fire immediately at the wrong price
-    if (payload.stop) {
-      return res.status(400).json({ success: false, error: 'Stop orders are not available yet' })
+    if (payload.stopType) {
+      return await placeStopOrder(req, res, payload)
     }
     const result = await executeOrder({ userId: req.user.id, ...payload }, req.app.get('io'))
     res.json({

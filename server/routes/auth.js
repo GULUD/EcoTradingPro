@@ -13,13 +13,13 @@ const authLimiter = rateLimit({
   message: { success: false, error: 'Too many authentication attempts, please try again later.' },
 })
 
-// Per-account lockout on top of the per-IP limiter, so rotating proxies cannot
-// slow-brute-force one account. In-memory only: resets on restart.
+// Per-account lockout on top of the per-IP limiter. Keyed by IP as well, so an
+// attacker cannot lock a victim out of their own account from elsewhere.
 const FAILURE_WINDOW_MS = 60 * 60 * 1000
 const FAILURE_MAX = 10
 const loginFailures = new Map()
 
-const failureKey = (scope, email) => `${scope}:${String(email).toLowerCase()}`
+const failureKey = (scope, email, ip) => `${scope}:${String(email).toLowerCase()}:${ip || 'unknown'}`
 
 function isAccountLocked(key) {
   const record = loginFailures.get(key)
@@ -125,7 +125,7 @@ router.post('/user/login', authLimiter, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Email and password are required' })
     }
 
-    const key = failureKey('user', email)
+    const key = failureKey('user', email, req.ip)
     if (isAccountLocked(key)) return sendLocked(res)
 
     const user = await prisma.user.findUnique({ where: { email: String(email).toLowerCase() } })
@@ -162,7 +162,7 @@ router.post('/admin/login', authLimiter, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Email and password are required' })
     }
 
-    const key = failureKey('admin', email)
+    const key = failureKey('admin', email, req.ip)
     if (isAccountLocked(key)) return sendLocked(res)
 
     const admin = await prisma.admin.findUnique({ where: { email: String(email).toLowerCase() } })

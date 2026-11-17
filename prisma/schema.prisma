@@ -21,6 +21,9 @@ enum TradeSource {
 enum OrderType {
   market
   limit
+  // stop_loss fires as a market order; stop_limit rests at `price` after firing
+  stop_loss
+  stop_limit
 }
 
 enum OrderStatus {
@@ -28,6 +31,8 @@ enum OrderStatus {
   partial
   filled
   canceled
+  // A stop order that fired; it is a schedule entry, the fill is a separate order row
+  triggered
 }
 
 model User {
@@ -244,6 +249,8 @@ model Order {
   filled    Float       @default(0)
   status    OrderStatus @default(open)
   house     Boolean     @default(false)
+  // Activation level for stop orders; also the display price before firing
+  triggerPrice Float?
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 

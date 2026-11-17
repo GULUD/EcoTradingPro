@@ -55,6 +55,7 @@ function AdminP2P() {
   const [limitEdits, setLimitEdits] = useState({})
   const [adForm, setAdForm] = useState({ id: '', type: 'bank', account: '', name: '', status: 'active' })
   const [issueForm, setIssueForm] = useState({ type: 'mint', userId: '', amount: '', note: '' })
+  const [pendingIssue, setPendingIssue] = useState(null)
   const [cancelDialog, setCancelDialog] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelError, setCancelError] = useState('')
@@ -269,14 +270,19 @@ function AdminP2P() {
       setError('Enter an amount greater than zero')
       return
     }
+    // Issuance changes the money supply, so it always goes through an explicit confirmation step
+    const owner = users.find((u) => u.id === issueForm.userId)
+    setPendingIssue({ ...issueForm, amount, email: owner?.email || issueForm.userId })
+  }
+
+  const confirmIssue = () => {
+    if (!pendingIssue) return
+    const { type, userId, amount, note } = pendingIssue
     run(async () => {
-      await axios.post(`/api/admin/gulu/${issueForm.type}`, {
-        userId: issueForm.userId,
-        amount,
-        note: issueForm.note,
-      })
-      setIssueForm({ type: issueForm.type, userId: issueForm.userId, amount: '', note: '' })
-      setNotice(issueForm.type === 'mint' ? 'GULU minted' : 'GULU burned')
+      await axios.post(`/api/admin/gulu/${type}`, { userId, amount, note })
+      setIssueForm({ type, userId, amount: '', note: '' })
+      setPendingIssue(null)
+      setNotice(type === 'mint' ? 'GULU minted' : 'GULU burned')
       await Promise.all([loadSupply(), loadIssues(), loadUsers(), loadStats()])
     })
   }
@@ -663,6 +669,30 @@ function AdminP2P() {
                 {issueForm.type === 'mint' ? 'Mint GULU' : 'Burn GULU'}
               </button>
             </form>
+
+            {pendingIssue && (
+              <div className="mt-4 p-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-sm">
+                <p className="font-semibold text-amber-200">
+                  Confirm {pendingIssue.type === 'mint' ? 'minting' : 'burning'} {fmt(pendingIssue.amount)} GULU
+                </p>
+                <p className="text-gray-400 mt-1">
+                  {pendingIssue.type === 'mint' ? 'Credit' : 'Debit'} {pendingIssue.email}. This changes the total supply
+                  and cannot be undone.
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={confirmIssue} disabled={busy} className={primaryBtn}>
+                    {busy ? 'Submitting...' : 'Confirm'}
+                  </button>
+                  <button
+                    onClick={() => setPendingIssue(null)}
+                    disabled={busy}
+                    className="px-4 py-2 rounded-lg font-semibold border border-gray-600 text-gray-300 hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className={card}>

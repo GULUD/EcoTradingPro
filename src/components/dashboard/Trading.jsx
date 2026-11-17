@@ -13,6 +13,7 @@ function Trading() {
   const [selectedAsset, setSelectedAsset] = useState('BTC')
   const [amount, setAmount] = useState('')
   const [price, setPrice] = useState('')
+  const [triggerPrice, setTriggerPrice] = useState('')
   const [priceSnapshot, setPriceSnapshot] = useState({})
   const [account, setAccount] = useState({ balance: 0, portfolio: {} })
   const [orderBook, setOrderBook] = useState({ bids: [], asks: [] })
@@ -28,6 +29,7 @@ function Trading() {
   const prices = { ...priceSnapshot, ...liveMarketData }
   const pair = `${selectedAsset}/GULU`
   const lastPrice = Number(prices[pair]?.price) || 0
+  const isStop = orderType === 'stop-loss' || orderType === 'stop-limit'
   const balance = Number(account.balance) || 0
   const held = Number(account.portfolio?.[selectedAsset] || 0)
 
@@ -140,6 +142,8 @@ function Trading() {
   // Buys are sized in quote (GULU), sells in base asset, matching the exchange convention
   const referencePrice = () => {
     if (orderType === 'limit' && price) return parseFloat(price) || 0
+    if (orderType === 'stop-limit' && price) return parseFloat(price) || 0
+    if (orderType === 'stop-loss' && triggerPrice) return parseFloat(triggerPrice) || 0
     const bestAsk = orderBook.asks[0]?.price
     const bestBid = orderBook.bids[0]?.price
     return tradeType === 'buy' ? bestAsk || lastPrice : bestBid || lastPrice
@@ -148,6 +152,8 @@ function Trading() {
   const quantity = () => {
     const value = parseFloat(amount)
     if (!value || value <= 0) return 0
+    // Stop orders are always entered in base units so the fired trade matches the plan
+    if (isStop) return value
     if (tradeType === 'sell') return value
     const px = referencePrice()
     return px > 0 ? value / px : 0
@@ -156,6 +162,7 @@ function Trading() {
   const total = () => {
     const value = parseFloat(amount)
     if (!value || value <= 0) return 0
+    if (isStop) return value * referencePrice()
     if (tradeType === 'buy') return value
     return value * referencePrice()
   }
@@ -169,18 +176,34 @@ function Trading() {
   const submitOrder = async () => {
     const value = parseFloat(amount)
     if (!value || value <= 0) {
-      setMessage(tradeType === 'buy' ? 'Enter the GULU amount to spend' : `Enter the ${selectedAsset} amount to sell`)
+      setMessage(isStop ? `Enter the ${selectedAsset} quantity` : tradeType === 'buy' ? 'Enter the GULU amount to spend' : `Enter the ${selectedAsset} amount to sell`)
       return
     }
     if (orderType === 'limit' && !(parseFloat(price) > 0)) {
       setMessage('Enter a limit price')
       return
     }
-    if (tradeType === 'buy' && value > balance) {
-      setMessage('Insufficient balance')
+    if (orderType === 'stop-limit' && !(parseFloat(price) > 0)) {
+      setMessage('Enter a limit price for the stop-limit order')
       return
     }
-    if (tradeType === 'sell' && value > held) {
+    if (isStop && !(parseFloat(triggerPrice) > 0)) {
+      setMessage('Enter a trigger price')
+      return
+    }
+    if (isStop) {
+      if (tradeType === 'buy' && value * referencePrice() > balance) {
+        setMessage('Insufficient balance')
+        return
+      }
+      if (tradeType === 'sell' && value > held) {
+        setMessage(`Insufficient ${selectedAsset} balance`)
+        return
+      }
+    } else if (tradeType === 'buy' && value > balance) {
+      setMessage('Insufficient balance')
+      return
+    } else if (tradeType === 'sell' && value > held) {
       setMessage(`Insufficient ${selectedAsset} balance`)
       return
     }
@@ -189,9 +212,14 @@ function Trading() {
       symbol: selectedAsset,
       side: tradeType,
       type: orderType,
-      amount: value,
     }
-    if (orderType === 'limit') payload.price = parseFloat(price)
+    if (isStop) {
+      payload.size = value
+      payload.triggerPrice = parseFloat(triggerPrice)
+    } else {
+      payload.amount = value
+    }
+    if (orderType === 'limit' || orderType === 'stop-limit') payload.price = parseFloat(price)
 
     setLoading(true)
     setMessage('')
@@ -219,7 +247,11 @@ function Trading() {
       const avg = filled > 0 ? notional / filled : 0
 
       if (data.order.status === 'open' || data.order.status === 'partial') {
-        setMessage(`Resting order: ${data.order.remaining} ${selectedAsset} @ ${data.order.price} GULU`)
+        setMessage(
+          isStop
+            ? `Stop order armed: fires when ${selectedAsset}/GULU reaches ${data.order.triggerPrice} GULU`
+            : `Resting order: ${data.order.remaining} ${selectedAsset} @ ${data.order.price} GULU`
+        )
       } else if (filled > 0) {
         setMessage(`Filled ${filled.toFixed(6)} ${selectedAsset} at ${avg.toFixed(2)} GULU`)
       } else {
@@ -307,34 +339,58 @@ function Trading() {
               <select
                 value={orderType}
                 onChange={(e) => {
-                  setOrderType(e.target.value)
-                  if (e.target.value === 'market') setPrice(lastPrice ? String(lastPrice) : '')
+                  const next = e.target.value
+                  setOrderType(next)
+                  setTriggerPrice(next.startsWith('stop') ? (lastPrice ? String(lastPrice) : '') : '')
+                  if (next === 'market') setPrice(lastPrice ? String(lastPrice) : '')
                   else setPrice('')
                 }}
                 className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
               >
                 <option value="limit">Limit Order</option>
                 <option value="market">Market Order</option>
+                <option value="stop-loss">Stop-Loss (Market)</option>
+                <option value="stop-limit">Stop-Limit</option>
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Price (GULU)</label>
-              <input
-                type="number"
-                value={price}
-                readOnly={orderType === 'market'}
-                onChange={(e) => setPrice(e.target.value)}
-                className={`w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 ${
-                  orderType === 'market' ? 'opacity-60' : ''
-                }`}
-                placeholder="0.00"
-              />
-            </div>
+            {isStop && (
+              <div>
+                <label className="block text-sm font-medium mb-2">Trigger Price (GULU)</label>
+                <input
+                  type="number"
+                  value={triggerPrice}
+                  onChange={(e) => setTriggerPrice(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  placeholder={lastPrice ? lastPrice.toFixed(2) : '0.00'}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {tradeType === 'buy' ? 'Fires when the price rises to or above this level.' : 'Fires when the price falls to or below this level.'}
+                </p>
+              </div>
+            )}
+
+            {orderType !== 'stop-loss' && (
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  {orderType === 'stop-limit' ? 'Limit Price (GULU)' : 'Price (GULU)'}
+                </label>
+                <input
+                  type="number"
+                  value={price}
+                  readOnly={orderType === 'market'}
+                  onChange={(e) => setPrice(e.target.value)}
+                  className={`w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                    orderType === 'market' ? 'opacity-60' : ''
+                  }`}
+                  placeholder="0.00"
+                />
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-2">
-                {tradeType === 'buy' ? 'Amount (GULU)' : `Amount (${selectedAsset})`}
+                {isStop || tradeType === 'sell' ? `Amount (${selectedAsset})` : 'Amount (GULU)'}
               </label>
               <input
                 type="number"
@@ -374,7 +430,7 @@ function Trading() {
 
             {message && (
               <div className={`p-3 rounded-lg text-sm ${
-                message.startsWith('Filled') || message.startsWith('Resting') || message === 'Order canceled'
+                message.startsWith('Filled') || message.startsWith('Resting') || message.startsWith('Stop order') || message === 'Order canceled'
                   ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400'
                   : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400'
               }`}>
@@ -527,7 +583,8 @@ function Trading() {
                     <div className="text-sm text-gray-600 dark:text-gray-400 tabular-nums">
                       <div>{order.remaining} @ {order.price} GULU</div>
                       <div>
-                        {order.type} order
+                        {order.type.replace('_', '-')} order
+                        {order.triggerPrice ? `, trigger ${order.triggerPrice} GULU` : ''}
                         {order.filled > 0 ? `, filled ${order.filled}` : ''}
                       </div>
                     </div>

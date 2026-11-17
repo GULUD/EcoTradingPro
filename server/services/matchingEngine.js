@@ -22,7 +22,15 @@ const opposite = (side) => (side === 'buy' ? 'sell' : 'buy')
 function orderDto(o) {
   const remaining = r8(o.size - o.filled)
   const legacyStatus =
-    o.status === 'filled' ? 'completed' : o.status === 'canceled' ? 'cancelled' : o.status === 'open' ? 'pending' : 'partial'
+    o.status === 'filled'
+      ? 'completed'
+      : o.status === 'canceled'
+        ? 'cancelled'
+        : o.status === 'open'
+          ? 'pending'
+          : o.status === 'triggered'
+            ? 'triggered'
+            : 'partial'
   return {
     id: o.id,
     symbol: o.symbol,
@@ -33,6 +41,7 @@ function orderDto(o) {
     filled: o.filled,
     remaining,
     status: o.status,
+    triggerPrice: o.triggerPrice ?? null,
     createdAt: o.createdAt.getTime(),
     updatedAt: o.updatedAt.getTime(),
     // legacy field names still read by OrderHistory and the trading panel
@@ -47,7 +56,8 @@ function orderDto(o) {
 
 async function bestPrice(symbol, side) {
   const rows = await prisma.order.findMany({
-    where: { symbol, side, status: { in: ['open', 'partial'] } },
+    // Stop orders are dormant schedules, not liquidity
+    where: { symbol, side, type: 'limit', status: { in: ['open', 'partial'] } },
     orderBy: { price: side === 'buy' ? 'desc' : 'asc' },
     take: 1,
   })
@@ -58,7 +68,7 @@ async function bestPrice(symbol, side) {
 // two takers can never consume the same order twice.
 const MARKET_SLIPPAGE = 0.01
 
-async function executeOrder({ userId, symbol, side, type, price, amount, size }, io) {
+async function executeOrder({ userId, symbol, side, type, price, amount, size, allowFarPrice = false }, io) {
   const coin = await prisma.marketData.findUnique({ where: { symbol } })
   if (!coin || coin.delisted) throw new TradeError('market not available')
 
@@ -71,7 +81,7 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size },
 
   // Two self-dealt accounts could otherwise print any price and move the market reference.
   // Anchor on the last traded price; manualPrice is only a fallback before the first fill.
-  if (type === 'limit') {
+  if (type === 'limit' && !allowFarPrice) {
     const reference = coin.price > 0 ? coin.price : coin.manualPrice
     if (reference > 0 && Math.abs(price / reference - 1) > 0.2) {
       throw new TradeError('limit price is too far from the market price')
@@ -87,9 +97,16 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size },
 
   let qty
   if (side === 'buy') {
-    const quote = +amount
-    if (!Number.isFinite(quote) || quote <= 0) throw new TradeError('quote amount required')
-    qty = r8(quote / worst)
+    if (amount != null) {
+      const quote = +amount
+      if (!Number.isFinite(quote) || quote <= 0) throw new TradeError('quote amount required')
+      qty = r8(quote / worst)
+    } else if (size != null) {
+      // Stop orders carry a base quantity so the triggered trade matches the schedule
+      qty = r8(+size)
+    } else {
+      throw new TradeError('quote amount required')
+    }
   } else {
     qty = r8(size != null ? +size : +amount)
   }
@@ -106,6 +123,7 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size },
         SELECT id FROM "Order"
         WHERE symbol = ${symbol}
           AND side = ${opposite(side)}::"Side"
+          AND type = 'limit'::"OrderType"
           AND status IN ('open'::"OrderStatus", 'partial'::"OrderStatus")
           ${type === 'limit' ? (side === 'buy' ? Prisma.sql`AND price <= ${refPrice}` : Prisma.sql`AND price >= ${refPrice}`) : Prisma.empty}
         ORDER BY price ${side === 'buy' ? Prisma.sql`ASC` : Prisma.sql`DESC`}, "createdAt" ASC
@@ -376,11 +394,13 @@ async function cancelOrder({ userId, orderId }, io) {
       if (!u) throw new TradeError('user not found', 404)
 
       const remaining = r8(o.size - o.filled)
+      // Stop orders never locked funds, so cancelling one must not credit the account
+      const isStop = o.type === 'stop_loss' || o.type === 'stop_limit'
       const portfolio = { ...(u.portfolio || {}) }
       let balance = u.balance
-      if (o.side === 'buy') {
+      if (!isStop && o.side === 'buy') {
         balance = r8(balance + remaining * o.price)
-      } else if (remaining > 0) {
+      } else if (!isStop && remaining > 0) {
         portfolio[o.symbol] = r8((Number(portfolio[o.symbol]) || 0) + remaining)
       }
 
@@ -415,7 +435,7 @@ async function cancelOrder({ userId, orderId }, io) {
 async function getOrderBook(symbol, depth = 20) {
   // Read each side from the top of the book; ordering by creation time truncated the best levels
   const take = Math.max(depth * 5, 200)
-  const base = { symbol, status: { in: ['open', 'partial'] } }
+  const base = { symbol, type: 'limit', status: { in: ['open', 'partial'] } }
   const [bidRows, askRows] = await Promise.all([
     prisma.order.findMany({ where: { ...base, side: 'buy' }, orderBy: { price: 'desc' }, take }),
     prisma.order.findMany({ where: { ...base, side: 'sell' }, orderBy: { price: 'asc' }, take }),

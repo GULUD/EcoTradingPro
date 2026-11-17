@@ -33,12 +33,12 @@ async function tick(io) {
       where: { symbol: c.symbol, house: true, status: { in: ['open', 'partial'] } },
     })
     const userBidRow = await prisma.order.findFirst({
-      where: { symbol: c.symbol, house: false, side: 'buy', status: { in: ['open', 'partial'] } },
+      where: { symbol: c.symbol, house: false, type: 'limit', side: 'buy', status: { in: ['open', 'partial'] } },
       orderBy: { price: 'desc' },
       select: { price: true },
     })
     const userAskRow = await prisma.order.findFirst({
-      where: { symbol: c.symbol, house: false, side: 'sell', status: { in: ['open', 'partial'] } },
+      where: { symbol: c.symbol, house: false, type: 'limit', side: 'sell', status: { in: ['open', 'partial'] } },
       orderBy: { price: 'asc' },
       select: { price: true },
     })
