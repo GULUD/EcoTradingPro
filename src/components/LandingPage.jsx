@@ -10,8 +10,13 @@ function LandingPage() {
   const roiChartRef = useRef(null)
 
   useEffect(() => {
+    // Charts must be destroyed on unmount; otherwise a remount reuses a canvas that still owns an instance
+    const charts = []
+
     // Hero Chart
     if (heroChartRef.current) {
+      const existing = Chart.getChart(heroChartRef.current)
+      if (existing) existing.destroy()
       const ctx = heroChartRef.current.getContext('2d')
       const randomWalk = (n = 50, start = 68000) => {
         const d = [start]
@@ -21,7 +26,8 @@ function LandingPage() {
         return d
       }
 
-      new Chart(ctx, {
+      charts.push(
+        new Chart(ctx, {
         type: 'line',
         data: {
           labels: Array.from({ length: 60 }, (_, i) => i),
@@ -45,13 +51,17 @@ function LandingPage() {
           },
           animation: { duration: 1500 }
         }
-      })
+        })
+      )
     }
 
     // ROI Chart
     if (roiChartRef.current) {
+      const existing = Chart.getChart(roiChartRef.current)
+      if (existing) existing.destroy()
       const ctx = roiChartRef.current.getContext('2d')
-      new Chart(ctx, {
+      charts.push(
+        new Chart(ctx, {
         type: 'line',
         data: {
           labels: Array.from({ length: 24 }, (_, i) => `M${i + 1}`),
@@ -73,8 +83,11 @@ function LandingPage() {
             y: { ticks: { color: '#9CA3AF' } }
           }
         }
-      })
+        })
+      )
     }
+
+    return () => charts.forEach((chart) => chart.destroy())
   }, [])
 
   return (
