@@ -42,7 +42,7 @@ function News() {
       setNews(response.data)
       setLoading(false)
     } catch (error) {
-      console.error('Error fetching news:', error)
+      console.error('[news] list fetch failed', error.message)
       setLoading(false)
     }
   }

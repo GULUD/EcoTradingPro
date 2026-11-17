@@ -42,7 +42,7 @@ export function AuthProvider({ children }) {
       }
     } catch (error) {
       // Offline or cold-start errors must not log the user out; the token stays for a later retry
-      console.error('Token verification failed:', error)
+      console.error('[auth] token verification failed', error.message)
     } finally {
       setLoading(false)
     }
@@ -67,7 +67,7 @@ export function AuthProvider({ children }) {
       }
       return { success: false, error: data.error || 'Login failed' }
     } catch (error) {
-      console.error('Login error:', error)
+      console.error('[auth] login failed', error.message)
       return { success: false, error: 'Network error. Please try again.' }
     }
   }
@@ -90,7 +90,7 @@ export function AuthProvider({ children }) {
       }
       return { success: false, error: data.error || 'Registration failed' }
     } catch (error) {
-      console.error('Registration error:', error)
+      console.error('[auth] registration failed', error.message)
       return { success: false, error: 'Network error. Please try again.' }
     }
   }

@@ -36,7 +36,7 @@ function OrderHistory() {
       })
       setOrders(response.data || [])
     } catch (error) {
-      console.error('Error fetching order history:', error)
+      console.error('[history] order fetch failed', error.message)
     }
   }
 
@@ -54,7 +54,7 @@ function OrderHistory() {
       setTrades(response.data || [])
       setLoading(false)
     } catch (error) {
-      console.error('Error fetching trade history:', error)
+      console.error('[history] trade fetch failed', error.message)
       setLoading(false)
     }
   }

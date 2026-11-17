@@ -22,7 +22,12 @@ function Watchlist() {
     fetchMarketPrices()
 
     const interval = setInterval(fetchMarketPrices, 3000)
-    return () => clearInterval(interval)
+    // Alert rows change server-side (triggered) even while the page is open
+    const alertsInterval = setInterval(fetchPriceAlerts, 30000)
+    return () => {
+      clearInterval(interval)
+      clearInterval(alertsInterval)
+    }
   }, [])
 
   const fetchWatchlist = async () => {
@@ -33,7 +38,7 @@ function Watchlist() {
       })
       setWatchlist(response.data || [])
     } catch (error) {
-      console.error('Error fetching watchlist:', error)
+      console.error('[watchlist] fetch failed', error.message)
     }
   }
 
@@ -45,7 +50,7 @@ function Watchlist() {
       })
       setPriceAlerts(response.data || [])
     } catch (error) {
-      console.error('Error fetching price alerts:', error)
+      console.error('[watchlist] alert fetch failed', error.message)
     }
   }
 
@@ -57,10 +62,16 @@ function Watchlist() {
       ])
       setMarketPrices(pricesResponse.data)
       if (Array.isArray(listResponse.data?.data)) {
-        setAvailableAssets(listResponse.data.data.map((coin) => coin.symbol))
+        const symbols = listResponse.data.data.map((coin) => coin.symbol)
+        setAvailableAssets(symbols)
+        // The alert form must default to a listed market, otherwise the first
+        // option is shown while the state still points at a delisted symbol
+        if (symbols.length) {
+          setSelectedAsset((current) => (symbols.includes(current) ? current : symbols[0]))
+        }
       }
     } catch (error) {
-      console.error('Error fetching market prices:', error)
+      console.error('[watchlist] market fetch failed', error.message)
     }
   }
 
@@ -73,7 +84,7 @@ function Watchlist() {
       fetchWatchlist()
       setShowAddForm(false)
     } catch (error) {
-      console.error('Error adding to watchlist:', error)
+      console.error('[watchlist] add failed', error.message)
     }
   }
 
@@ -85,7 +96,7 @@ function Watchlist() {
       })
       fetchWatchlist()
     } catch (error) {
-      console.error('Error removing from watchlist:', error)
+      console.error('[watchlist] remove failed', error.message)
     }
   }
 
@@ -121,7 +132,7 @@ function Watchlist() {
       })
       fetchPriceAlerts()
     } catch (error) {
-      console.error('Error deleting alert:', error)
+      console.error('[watchlist] alert delete failed', error.message)
     }
   }
 

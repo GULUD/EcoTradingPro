@@ -17,6 +17,16 @@ function NewsManagement() {
     priority: '0',
     isPublished: false
   })
+  const [announcements, setAnnouncements] = useState([])
+  const [annForm, setAnnForm] = useState({
+    title: '',
+    content: '',
+    type: 'info',
+    priority: 'medium',
+    expiresAt: ''
+  })
+  const [annMessage, setAnnMessage] = useState('')
+  const [annBusy, setAnnBusy] = useState(false)
 
   const categories = [
     { value: 'general', label: 'General' },
@@ -35,7 +45,20 @@ function NewsManagement() {
 
   useEffect(() => {
     fetchNews()
+    fetchAnnouncements()
   }, [])
+
+  const fetchAnnouncements = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      const response = await axios.get('/api/announcements/admin', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      setAnnouncements(Array.isArray(response.data) ? response.data : [])
+    } catch (error) {
+      console.error('[news-admin] announcement fetch failed', error.message)
+    }
+  }
 
   const fetchNews = async () => {
     try {
@@ -46,7 +69,7 @@ function NewsManagement() {
       setNews(response.data)
       setLoading(false)
     } catch (error) {
-      console.error('Error fetching news:', error)
+      console.error('[news-admin] news fetch failed', error.message)
       setLoading(false)
     }
   }
@@ -143,6 +166,48 @@ function NewsManagement() {
     })
     setEditingNews(null)
     setShowForm(false)
+  }
+
+  const submitAnnouncement = async (event) => {
+    event.preventDefault()
+    if (annBusy) return
+    if (annForm.title.trim().length < 3) {
+      setAnnMessage('Enter a title of at least 3 characters')
+      return
+    }
+    setAnnBusy(true)
+    setAnnMessage('')
+    try {
+      const token = localStorage.getItem('token')
+      await axios.post('/api/announcements', {
+        title: annForm.title.trim(),
+        content: annForm.content,
+        type: annForm.type,
+        priority: annForm.priority,
+        expiresAt: annForm.expiresAt || undefined
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      setAnnForm({ title: '', content: '', type: 'info', priority: 'medium', expiresAt: '' })
+      setAnnMessage('Announcement published')
+      await fetchAnnouncements()
+    } catch (error) {
+      setAnnMessage(error.response?.data?.message || error.response?.data?.error || 'Failed to publish announcement')
+    } finally {
+      setAnnBusy(false)
+    }
+  }
+
+  const toggleAnnouncement = async (item) => {
+    try {
+      const token = localStorage.getItem('token')
+      await axios.patch(`/api/announcements/${item.id}`, { active: !item.active }, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      await fetchAnnouncements()
+    } catch (error) {
+      setAnnMessage(error.response?.data?.message || 'Failed to update the announcement')
+    }
   }
 
   const getPriorityStyle = (priority) => {
@@ -395,6 +460,127 @@ function NewsManagement() {
                 <div className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
                   {(article.content || '').substring(0, 200)}
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Platform announcements: displayed to users in their notification centre */}
+      <div className="glass rounded-2xl p-6">
+        <h3 className="text-xl font-bold mb-4">Platform Announcements</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Announcements appear for every signed-in user under Notifications. Keeping one inactive hides it immediately.
+        </p>
+
+        {annMessage && (
+          <div className={`p-3 rounded-lg mb-4 text-sm ${
+            annMessage.includes('published')
+              ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+              : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+          }`}>
+            {annMessage}
+          </div>
+        )}
+
+        <form onSubmit={submitAnnouncement} className="space-y-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium mb-2">Title *</label>
+              <input
+                type="text"
+                value={annForm.title}
+                onChange={(e) => setAnnForm({ ...annForm, title: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                placeholder="Scheduled maintenance"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Type</label>
+              <select
+                value={annForm.type}
+                onChange={(e) => setAnnForm({ ...annForm, type: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="info">Info</option>
+                <option value="update">Update</option>
+                <option value="warning">Warning</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Priority</label>
+              <select
+                value={annForm.priority}
+                onChange={(e) => setAnnForm({ ...annForm, priority: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2">Expires at</label>
+              <input
+                type="datetime-local"
+                value={annForm.expiresAt}
+                onChange={(e) => setAnnForm({ ...annForm, expiresAt: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Content</label>
+            <textarea
+              value={annForm.content}
+              onChange={(e) => setAnnForm({ ...annForm, content: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              placeholder="What changed and what users need to know"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={annBusy}
+            className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-medium transition"
+          >
+            {annBusy ? 'Publishing...' : 'Publish announcement'}
+          </button>
+        </form>
+
+        {announcements.length === 0 ? (
+          <p className="text-sm text-gray-500">No announcements yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {announcements.map((item) => (
+              <div key={item.id} className="flex flex-col md:flex-row md:items-start justify-between gap-3 p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-semibold">{item.title}</h4>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      item.active
+                        ? 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                    }`}>
+                      {item.active ? 'Active' : 'Hidden'}
+                    </span>
+                    <span className="text-xs text-gray-500 capitalize">{item.type} / {item.priority}</span>
+                  </div>
+                  {item.content && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{item.content}</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">
+                    Created {new Date(item.createdAt).toLocaleString()}
+                    {item.expiresAt ? ` | Expires ${new Date(item.expiresAt).toLocaleString()}` : ''}
+                  </p>
+                </div>
+                <button
+                  onClick={() => toggleAnnouncement(item)}
+                  className="shrink-0 px-3 py-1 rounded text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 transition"
+                >
+                  {item.active ? 'Hide' : 'Activate'}
+                </button>
               </div>
             ))}
           </div>

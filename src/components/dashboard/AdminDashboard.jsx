@@ -56,7 +56,7 @@ function AdminDashboard() {
       const response = await axios.get('/api/admin/users')
       setUsers(Array.isArray(response.data) ? response.data : [])
     } catch (error) {
-      console.error('Error fetching users:', error.message)
+      console.error('[admin] user fetch failed', error.message)
     }
   }
 
@@ -65,7 +65,7 @@ function AdminDashboard() {
       const response = await axios.get('/api/admin/stats')
       setStats(response.data)
     } catch (error) {
-      console.error('Error fetching stats:', error.message)
+      console.error('[admin] stats fetch failed', error.message)
     }
   }
 

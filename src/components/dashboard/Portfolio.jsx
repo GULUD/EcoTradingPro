@@ -27,7 +27,7 @@ function Portfolio() {
       })
       setPortfolio(response.data.portfolio || {})
     } catch (error) {
-      console.error('Error fetching portfolio:', error)
+      console.error('[portfolio] profile fetch failed', error.message)
     }
   }
 
@@ -39,7 +39,7 @@ function Portfolio() {
       })
       setTrades(response.data)
     } catch (error) {
-      console.error('Error fetching trades:', error)
+      console.error('[portfolio] trades fetch failed', error.message)
     }
   }
 
@@ -49,7 +49,7 @@ function Portfolio() {
       setMarketPrices(response.data)
       setLoading(false)
     } catch (error) {
-      console.error('Error fetching market prices:', error)
+      console.error('[portfolio] price fetch failed', error.message)
       setLoading(false)
     }
   }

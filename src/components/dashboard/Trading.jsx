@@ -464,7 +464,7 @@ function Trading() {
 
             {message && (
               <div className={`p-3 rounded-lg text-sm ${
-                message.startsWith('Filled') || message.startsWith('Resting') || message.startsWith('Stop order') || message === 'Order canceled'
+                message.startsWith('Filled') || message.startsWith('Resting') || message.startsWith('Stop order') || message.startsWith('Order canceled')
                   ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400'
                   : 'bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400'
               }`}>
@@ -507,7 +507,7 @@ function Trading() {
               <div>
                 <p className="text-sm text-gray-500">24h Volume</p>
                 <p className="text-2xl font-bold">
-                  {Number(prices[pair]?.volume || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} {selectedAsset}
+                  {Number(prices[pair]?.volume || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} GULU
                 </p>
               </div>
             </div>
@@ -539,7 +539,9 @@ function Trading() {
                 <div className="text-center">
                   <p className="text-sm text-gray-500">Spread</p>
                   <p className="font-semibold tabular-nums">
-                    {((orderBook.asks[0]?.price || 0) - (orderBook.bids[0]?.price || 0)).toFixed(2)} GULU
+                    {orderBook.asks[0] && orderBook.bids[0]
+                      ? `${(Number(orderBook.asks[0].price) - Number(orderBook.bids[0].price)).toFixed(decimals)} GULU`
+                      : '—'}
                   </p>
                 </div>
               </div>
