@@ -4,6 +4,10 @@
   "description": "Full-stack crypto trading platform with an internal matching engine",
   "scripts": {
     "test": "node scripts/smoke.js",
+    "test:unit": "node --test tests/unit/portfolio-replay.test.js",
+    "test:integration": "node --test tests/integration/api.test.js",
+    "test:regression": "node --test tests/regression/ledger.test.js",
+    "test:all": "node --test tests/unit/portfolio-replay.test.js tests/integration/api.test.js tests/regression/ledger.test.js",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd server && node index.js",
     "client": "vite",

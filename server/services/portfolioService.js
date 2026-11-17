@@ -28,7 +28,10 @@ function replayTrades(trades) {
       const costed = Math.min(trade.size, book.qty)
       const costOut = avgCost * costed
       const proceeds = trade.size * trade.price * (1 - FEE_RATE)
-      pnl = proceeds - costOut
+      // Holdings that never passed through the engine have no cost basis. Counting
+      // their full proceeds would invent profit, so only the tracked share counts.
+      const trackedShare = trade.size > 0 ? costed / trade.size : 0
+      pnl = proceeds * trackedShare - costOut
       realized += pnl
       book.qty = Math.max(0, book.qty - trade.size)
       book.cost = Math.max(0, book.cost - costOut)
@@ -344,4 +347,7 @@ class PortfolioService {
   }
 }
 
-module.exports = new PortfolioService()
+const portfolioService = new PortfolioService()
+// Pure cost-basis replay is exposed for the unit suite; it never touches the database
+portfolioService.replayTrades = replayTrades
+module.exports = portfolioService
