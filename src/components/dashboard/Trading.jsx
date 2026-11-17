@@ -466,7 +466,7 @@ function Trading() {
               {/* Asks (Sell Orders) */}
               <div>
                 <h4 className="text-sm font-semibold text-red-500 mb-2">Asks</h4>
-                <div className="space-y-1">
+                <div className="space-y-1 tabular-nums">
                   {orderBook.asks.slice(0, 8).reverse().map((ask, index) => (
                     <div 
                       key={index}
@@ -484,7 +484,7 @@ function Trading() {
               <div className="flex items-center justify-center">
                 <div className="text-center">
                   <p className="text-sm text-gray-500">Spread</p>
-                  <p className="font-semibold">
+                  <p className="font-semibold tabular-nums">
                     ${((orderBook.asks[0]?.price || 0) - (orderBook.bids[0]?.price || 0)).toFixed(2)}
                   </p>
                 </div>
@@ -493,7 +493,7 @@ function Trading() {
               {/* Bids (Buy Orders) */}
               <div>
                 <h4 className="text-sm font-semibold text-emerald-500 mb-2">Bids</h4>
-                <div className="space-y-1">
+                <div className="space-y-1 tabular-nums">
                   {orderBook.bids.slice(0, 8).map((bid, index) => (
                     <div 
                       key={index}

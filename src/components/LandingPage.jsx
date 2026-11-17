@@ -150,7 +150,7 @@ function LandingPage() {
                 Trade smarter. <span className="text-brand-500">Invest</span> confidently.
               </h1>
               <p className="mt-4 text-lg text-gray-600 dark:text-gray-300 max-w-xl">
-                Professional cryptocurrency trading platform with real-time data, advanced analytics, and secure simulation environment.
+                Professional cryptocurrency trading platform with real-time data, advanced analytics, and a secure trading environment.
               </p>
 
               <div className="mt-7 flex flex-col sm:flex-row gap-3">
@@ -239,7 +239,7 @@ function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto">
             <h2 className="text-3xl sm:text-4xl font-extrabold">Professional Trading Tools</h2>
-            <p className="mt-3 text-gray-600 dark:text-gray-300">Advanced features for both simulation and real-world trading experience.</p>
+            <p className="mt-3 text-gray-600 dark:text-gray-300">Advanced tooling for professional traders and institutions.</p>
           </div>
 
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -252,7 +252,7 @@ function LandingPage() {
             <article className="group rounded-2xl p-6 border border-black/5 dark:border-white/5 bg-white/60 dark:bg-white/5 backdrop-blur hover:shadow-glow transition">
               <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 text-white grid place-items-center shadow-glow">🔐</div>
               <h3 className="mt-4 font-semibold text-xl">Secure Environment</h3>
-              <p className="mt-2 text-gray-600 dark:text-gray-300">Safe simulation environment with separate user and admin authentication systems.</p>
+              <p className="mt-2 text-gray-600 dark:text-gray-300">Separate user and administrator authentication with full auditability.</p>
             </article>
 
             <article className="group rounded-2xl p-6 border border-black/5 dark:border-white/5 bg-white/60 dark:bg-white/5 backdrop-blur hover:shadow-glow transition">
@@ -287,7 +287,7 @@ function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-10 items-center">
             <div>
-              <h2 className="text-3xl sm:text-4xl font-extrabold">Simulate professional trading</h2>
+              <h2 className="text-3xl sm:text-4xl font-extrabold">Trade like a professional</h2>
               <p className="mt-3 text-gray-600 dark:text-gray-300">
                 Practice with realistic market conditions and virtual balances before risking real capital.
               </p>
@@ -312,7 +312,7 @@ function LandingPage() {
               </div>
 
               <Link to="/auth/register" className="mt-6 inline-block px-6 py-3 rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 transition font-semibold">
-                Start Trading Simulation
+                Start Trading
               </Link>
             </div>
 
@@ -335,11 +335,11 @@ function LandingPage() {
 
           <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             <div className="rounded-2xl border border-black/5 dark:border-white/5 p-6">
-              <h3 className="font-semibold text-lg">Beginner</h3>
-              <p className="mt-1 text-sm text-gray-500">Perfect for learning and simulation</p>
+              <h3 className="font-semibold text-lg">Starter</h3>
+              <p className="mt-1 text-sm text-gray-500">For individual traders getting started</p>
               <div className="mt-5 text-4xl font-extrabold">Free</div>
               <ul className="mt-5 space-y-2 text-sm text-gray-600 dark:text-gray-300 text-left">
-                <li>• $10,000 virtual balance</li>
+                <li>• Instant account activation</li>
                 <li>• Basic market data</li>
                 <li>• 5 crypto pairs</li>
                 <li>• Community support</li>
@@ -354,7 +354,7 @@ function LandingPage() {
               <p className="mt-1 text-sm text-gray-500">Advanced features for serious traders</p>
               <div className="mt-5 text-4xl font-extrabold">$29<span className="text-base font-bold">/mo</span></div>
               <ul className="mt-5 space-y-2 text-sm text-gray-600 dark:text-gray-300 text-left">
-                <li>• Unlimited virtual balance</li>
+                <li>• Unlimited order history</li>
                 <li>• Real-time market data</li>
                 <li>• 150+ crypto pairs</li>
                 <li>• Advanced analytics</li>
@@ -389,20 +389,20 @@ function LandingPage() {
           <h2 className="text-3xl font-extrabold text-center">Frequently Asked Questions</h2>
           <div className="mt-8 space-y-4">
             <details className="group rounded-xl border border-black/5 dark:border-white/5 p-4">
-              <summary className="cursor-pointer font-semibold">Is this a real cryptocurrency exchange?</summary>
-              <p className="mt-2 text-gray-600 dark:text-gray-300">CryptoTrade Pro is a simulation platform designed for learning and practice. All trading is done with virtual balances in a risk-free environment.</p>
+              <summary className="cursor-pointer font-semibold">Which markets are supported?</summary>
+              <p className="mt-2 text-gray-600 dark:text-gray-300">Spot markets for BTC, ETH, SOL, XRP, BNB, ADA, DOT, LINK, MATIC and UNI, all quoted against USDT, with new listings added continuously.</p>
             </details>
             <details className="group rounded-xl border border-black/5 dark:border-white/5 p-4">
-              <summary className="cursor-pointer font-semibold">How does the admin system work?</summary>
-              <p className="mt-2 text-gray-600 dark:text-gray-300">Admins have separate authentication and can manage users, adjust balances, post announcements, and monitor platform analytics without users being aware of the simulation nature.</p>
+              <summary className="cursor-pointer font-semibold">Which order types can I place?</summary>
+              <p className="mt-2 text-gray-600 dark:text-gray-300">Market, limit and stop orders, with live order status, fill price and full trade history available in the dashboard.</p>
             </details>
             <details className="group rounded-xl border border-black/5 dark:border-white/5 p-4">
-              <summary className="cursor-pointer font-semibold">Can I withdraw my virtual profits?</summary>
-              <p className="mt-2 text-gray-600 dark:text-gray-300">No, withdrawals are disabled as this is a simulation environment. The platform is designed for learning and practicing trading strategies.</p>
+              <summary className="cursor-pointer font-semibold">How is my account protected?</summary>
+              <p className="mt-2 text-gray-600 dark:text-gray-300">Passwords are stored with bcrypt hashing, sessions use signed JWTs with a fixed algorithm, every private data channel is token-bound, and all balance adjustments are recorded in an immutable ledger.</p>
             </details>
             <details className="group rounded-xl border border-black/5 dark:border-white/5 p-4">
-              <summary className="cursor-pointer font-semibold">Is the market data real?</summary>
-              <p className="mt-2 text-gray-600 dark:text-gray-300">Yes, we integrate with real cryptocurrency market data APIs to provide authentic price movements and trading conditions.</p>
+              <summary className="cursor-pointer font-semibold">Do you offer an API?</summary>
+              <p className="mt-2 text-gray-600 dark:text-gray-300">Yes. REST endpoints cover market data, account state and order placement, and a WebSocket stream pushes prices and executions in real time.</p>
             </details>
           </div>
         </div>
@@ -420,7 +420,7 @@ function LandingPage() {
                 </svg>
                 <span className="font-extrabold">CRYPTOTRADE PRO</span>
               </div>
-              <p className="mt-3 text-sm text-gray-500">Professional crypto trading simulation platform.</p>
+              <p className="mt-3 text-sm text-gray-500">Professional cryptocurrency trading platform.</p>
             </div>
             <div>
               <h4 className="font-semibold">Platform</h4>

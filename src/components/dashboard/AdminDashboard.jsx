@@ -264,7 +264,7 @@ function AdminDashboard() {
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
                   Welcome back, Admin
                 </h1>
-                <p className="text-gray-400 text-sm">Monitor and manage your crypto simulation platform</p>
+                <p className="text-gray-400 text-sm">Monitor and manage your trading platform</p>
               </div>
             </div>
 
@@ -360,7 +360,7 @@ function AdminDashboard() {
                     </div>
                   </div>
                   <h3 className="text-2xl font-bold mb-1">${users.reduce((sum, user) => sum + (user.balance || 0), 0).toLocaleString()}</h3>
-                  <p className="text-gray-400 text-sm">Simulated Volume</p>
+                  <p className="text-gray-400 text-sm">24h Volume</p>
                   <div className="mt-4 h-2 bg-gray-700 rounded-full overflow-hidden">
                     <div className="h-full bg-gradient-to-r from-purple-500 to-purple-400 rounded-full animate-pulse" style={{width: '89%'}}></div>
                   </div>
@@ -391,7 +391,7 @@ function AdminDashboard() {
                   className="w-full p-6 bg-gradient-to-r from-blue-600 to-blue-500 rounded-xl hover:shadow-lg hover:shadow-blue-500/25 transition-all duration-300 flex items-center justify-center"
                 >
                   <Wallet className="w-5 h-5 mr-3" />
-                  <span className="font-medium">Simulate Balance</span>
+                  <span className="font-medium">Adjust Balance</span>
                 </button>
                 <button className="w-full p-6 bg-gradient-to-r from-green-600 to-green-500 rounded-xl hover:shadow-lg hover:shadow-green-500/25 transition-all duration-300 flex items-center justify-center">
                   <Megaphone className="w-5 h-5 mr-3" />

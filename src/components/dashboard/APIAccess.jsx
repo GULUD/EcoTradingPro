@@ -594,7 +594,7 @@ makeRequest('POST', '/orders', {
                       <span className="text-gray-500 text-sm ml-2">
                         {permission === 'read' && '(View account data)'}
                         {permission === 'trade' && '(Place/cancel orders)'}
-                        {permission === 'withdraw' && '(Withdraw funds - NOT AVAILABLE IN SIMULATION)'}
+                        {permission === 'withdraw' && '(Withdraw funds)'}
                       </span>
                     </label>
                   ))}

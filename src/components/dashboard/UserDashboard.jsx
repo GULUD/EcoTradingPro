@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate, Routes, Route } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
+import { API_BASE } from '../../utils/api'
 import Chart from 'chart.js/auto'
 import Portfolio from './Portfolio'
 import Trading from './Trading'
@@ -38,7 +39,7 @@ function UserDashboard() {
   // Fetch market data
   const fetchMarketData = async () => {
     try {
-      const response = await fetch('/api/market/prices')
+      const response = await fetch(`${API_BASE}/api/market/prices`)
       const data = await response.json()
       setMarketData(data)
     } catch (error) {
@@ -309,7 +310,20 @@ function UserDashboard() {
           {/* Dashboard Content */}
           <main className="p-6">
             <Routes>
-              <Route path="/" element={<DashboardHome />} />
+              <Route
+                path="/"
+                element={
+                  <DashboardHome
+                    activeTimeFilter={activeTimeFilter}
+                    onTimeFilterChange={handleTimeFilterChange}
+                    chartRef={chartRef}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                    tradeForm={tradeForm}
+                    onTradeFormChange={handleTradeFormChange}
+                  />
+                }
+              />
               <Route path="/portfolio" element={<Portfolio />} />
               <Route path="/trading" element={<Trading />} />
               <Route path="/analytics" element={<Analytics />} />
@@ -338,7 +352,15 @@ function UserDashboard() {
   )
 }
 
-function DashboardHome() {
+function DashboardHome({
+  activeTimeFilter,
+  onTimeFilterChange,
+  chartRef,
+  activeTab,
+  setActiveTab,
+  tradeForm,
+  onTradeFormChange,
+}) {
   const { user } = useAuth()
   const [portfolioData, setPortfolioData] = useState({
     totalValue: 42689.24,
@@ -520,7 +542,7 @@ function DashboardHome() {
                 </div>
               </div>
               <div className="text-3xl font-bold mb-2">${user?.balance?.toLocaleString() || '0.00'}</div>
-              <div className="text-gray-500 text-sm">Simulation Balance</div>
+              <div className="text-gray-500 text-sm">Account Balance</div>
             </div>
 
             <div className="glass rounded-2xl p-6 hover:shadow-glow transition">
@@ -563,7 +585,7 @@ function DashboardHome() {
                   {['1H', '1D', '1W', '1M', '1Y'].map((filter) => (
                     <button
                       key={filter}
-                      onClick={() => handleTimeFilterChange(filter)}
+                      onClick={() => onTimeFilterChange(filter)}
                       className={`px-3 py-1 rounded-lg text-sm font-medium transition ${
                         activeTimeFilter === filter
                           ? 'bg-brand-500 text-white'
@@ -603,7 +625,7 @@ function DashboardHome() {
                   <label className="block text-sm font-medium mb-2">Asset</label>
                   <select
                     value={tradeForm.asset}
-                    onChange={(e) => handleTradeFormChange('asset', e.target.value)}
+                    onChange={(e) => onTradeFormChange('asset', e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
                   >
                     <option value="BTC">Bitcoin (BTC)</option>
@@ -619,7 +641,7 @@ function DashboardHome() {
                   <input
                     type="number"
                     value={tradeForm.amount}
-                    onChange={(e) => handleTradeFormChange('amount', parseFloat(e.target.value))}
+                    onChange={(e) => onTradeFormChange('amount', parseFloat(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
                     placeholder="0.00"
                   />
@@ -650,7 +672,7 @@ function DashboardHome() {
                   <label className="block text-sm font-medium mb-2">Order Type</label>
                   <select
                     value={tradeForm.orderType}
-                    onChange={(e) => handleTradeFormChange('orderType', e.target.value)}
+                    onChange={(e) => onTradeFormChange('orderType', e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
                   >
                     <option value="market">Market Order</option>
