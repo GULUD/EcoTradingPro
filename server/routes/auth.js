@@ -13,7 +13,8 @@ const authLimiter = rateLimit({
   message: { success: false, error: 'Too many authentication attempts, please try again later.' },
 })
 
-const generateToken = (id, role) => jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '7d' })
+const generateToken = (id, role) =>
+  jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '7d', algorithm: 'HS256' })
 
 const publicUser = (user) => ({
   id: user.id,
@@ -48,7 +49,8 @@ router.post('/user/register', authLimiter, async (req, res, next) => {
     const normalized = String(email).toLowerCase()
     const existing = await prisma.user.findUnique({ where: { email: normalized } })
     if (existing) {
-      return res.status(400).json({ success: false, error: 'User already exists with this email' })
+      // Same wording as a failed signup for other reasons, so the endpoint cannot be used to enumerate accounts
+      return res.status(400).json({ success: false, error: 'Unable to register with these details' })
     }
 
     const user = await prisma.user.create({
@@ -142,7 +144,7 @@ router.get('/me', authenticateToken, async (req, res) => {
   res.json({ success: true, user: publicUser(req.user) })
 })
 
-router.post('/change-password', authenticateToken, async (req, res, next) => {
+router.post('/change-password', authLimiter, authenticateToken, async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body
     if (!currentPassword || !newPassword || String(newPassword).length < 6) {

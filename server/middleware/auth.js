@@ -1,6 +1,17 @@
 const jwt = require('jsonwebtoken')
 const prisma = require('../db')
 
+// Routes a temporary-credential session may still call before it rotates its password
+const ROTATION_ALLOWED = new Set(['/api/auth/me', '/api/auth/change-password', '/api/auth/logout'])
+
+function rotationGuard(req, res, next) {
+  const path = req.originalUrl.split('?')[0]
+  if (ROTATION_ALLOWED.has(path)) return next()
+  return res
+    .status(403)
+    .json({ success: false, code: 'PASSWORD_CHANGE_REQUIRED', error: 'Password change required' })
+}
+
 async function authenticateToken(req, res, next) {
   const authHeader = req.headers.authorization
   const token = authHeader && authHeader.split(' ')[1]
@@ -9,7 +20,8 @@ async function authenticateToken(req, res, next) {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+    // Pin the algorithm so a token cannot request alg=none or an asymmetric swap
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
     if (decoded.role === 'admin') {
       const admin = await prisma.admin.findUnique({ where: { id: decoded.id } })
       if (!admin || !admin.isActive) {
@@ -17,6 +29,7 @@ async function authenticateToken(req, res, next) {
       }
       req.user = admin
       req.userRole = 'admin'
+      if (admin.mustChangePassword) return rotationGuard(req, res, next)
     } else if (decoded.role === 'user') {
       const user = await prisma.user.findUnique({ where: { id: decoded.id } })
       if (!user || !user.isActive) {
@@ -24,6 +37,7 @@ async function authenticateToken(req, res, next) {
       }
       req.user = user
       req.userRole = 'user'
+      if (user.mustChangePassword) return rotationGuard(req, res, next)
     } else {
       return res.status(401).json({ success: false, error: 'Invalid token role' })
     }

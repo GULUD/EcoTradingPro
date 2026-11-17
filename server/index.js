@@ -19,6 +19,7 @@ const express = require('express')
 const http = require('http')
 const socketIo = require('socket.io')
 const cors = require('cors')
+const jwt = require('jsonwebtoken')
 
 const prisma = require('./db')
 const { tickPrices } = require('./services/priceEngine')
@@ -35,7 +36,6 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
 const originCheck = (origin, cb) => {
   if (!origin) return cb(null, true)
   if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true)
-  if (/\.pages\.dev$/.test(origin)) return cb(null, true)
   if (process.env.NODE_ENV !== 'production') return cb(null, true)
   cb(new Error(`cors rejected: ${origin}`))
 }
@@ -85,15 +85,28 @@ app.use(require('./middleware/errorHandler'))
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'route not found' }))
 
+// Private rooms are derived from a verified token, never from a client-supplied id
+io.use((socket, next) => {
+  const token = socket.handshake.auth && socket.handshake.auth.token
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
+      socket.data.userId = decoded.id
+    } catch (e) {
+      socket.data.userId = null
+    }
+  }
+  next()
+})
+
 io.on('connection', (socket) => {
+  if (socket.data.userId) socket.join(`user-${socket.data.userId}`)
+
   socket.on('join', (room) => {
-    if (typeof room === 'string') socket.join(room)
+    if (room === 'market') socket.join('market')
   })
   socket.on('leave', (room) => {
     if (typeof room === 'string') socket.leave(room)
-  })
-  socket.on('join-user-room', (userId) => {
-    if (typeof userId === 'string') socket.join(`user-${userId}`)
   })
 })
 

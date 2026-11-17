@@ -60,8 +60,8 @@ router.get('/trades', authenticateToken, requireUser, async (req, res, next) => 
 
 router.post('/trades', authenticateToken, requireUser, async (req, res, next) => {
   try {
-    const { type, asset, amount, price, quantity, orderType } = req.body
-    if (!type || !asset || !amount || !price || !quantity) {
+    const { type, asset, quantity, orderType } = req.body
+    if (!type || !asset || !quantity) {
       return res.status(400).json({ success: false, error: 'Missing required trade data' })
     }
     if (!['buy', 'sell'].includes(type)) {
@@ -74,62 +74,95 @@ router.post('/trades', authenticateToken, requireUser, async (req, res, next) =>
       return res.status(400).json({ success: false, error: 'Market not available' })
     }
 
-    const amt = +amount
-    const qty = +quantity
-    const px = +price
-    if (!(amt > 0) || !(qty > 0) || !(px > 0)) {
+    const qty = Number(quantity)
+    if (!Number.isFinite(qty) || qty <= 0 || qty > 1e9) {
+      return res.status(400).json({ success: false, error: 'Invalid quantity' })
+    }
+
+    // Execution price and amount are always derived server-side; client-supplied price/amount is ignored
+    const px = +(coin.manualPrice ?? coin.price).toFixed(coin.decimals ?? 2)
+    const amt = +(qty * px).toFixed(2)
+    if (!(px > 0) || !(amt > 0)) {
       return res.status(400).json({ success: false, error: 'Invalid amount or price' })
     }
 
-    const before = req.user.balance
-    if (type === 'buy') {
-      const r = await prisma.user.updateMany({
-        where: { id: req.user.id, balance: { gte: amt } },
-        data: { balance: { decrement: amt } },
-      })
-      if (r.count === 0) {
-        return res.status(400).json({ success: false, error: 'Insufficient balance' })
+    const execute = () =>
+      prisma.$transaction(
+        async (tx) => {
+          const u = await tx.user.findUnique({ where: { id: req.user.id } })
+          if (!u) return { reject: { status: 401, error: 'User not found' } }
+
+          const portfolio = { ...(u.portfolio || {}) }
+          const held = Number(portfolio[symbol] || 0)
+
+          if (type === 'buy' && u.balance < amt) {
+            return { reject: { status: 400, error: 'Insufficient balance' } }
+          }
+          if (type === 'sell' && held < qty) {
+            return { reject: { status: 400, error: 'Insufficient holdings' } }
+          }
+
+          const nextQty = +(held + (type === 'buy' ? qty : -qty)).toFixed(8)
+          if (nextQty > 0) portfolio[symbol] = nextQty
+          else delete portfolio[symbol]
+
+          const updated = await tx.user.update({
+            where: { id: req.user.id },
+            data: {
+              balance: type === 'buy' ? { decrement: amt } : { increment: amt },
+              portfolio,
+            },
+          })
+
+          const trade = await tx.trade.create({
+            data: {
+              userId: req.user.id,
+              symbol,
+              side: type,
+              size: qty,
+              price: px,
+              pnl: 0,
+              source: 'user',
+              time: BigInt(Date.now()),
+            },
+          })
+
+          await tx.transaction.create({
+            data: {
+              userId: req.user.id,
+              type: 'trade',
+              amount: type === 'buy' ? -amt : amt,
+              balanceBefore: u.balance,
+              balanceAfter: updated.balance,
+              reason: `${type} ${qty} ${symbol} @ ${px}${orderType ? ` (${orderType})` : ''}`,
+              ts: BigInt(Date.now()),
+            },
+          })
+
+          return { updated, trade }
+        },
+        { isolationLevel: 'Serializable' }
+      )
+
+    let result
+    // Serializable transactions can abort under contention; one retry is enough for this write shape
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        result = await execute()
+        break
+      } catch (e) {
+        if (e.code === 'P2034' && attempt === 0) continue
+        throw e
       }
-    } else {
-      await prisma.user.update({
-        where: { id: req.user.id },
-        data: { balance: { increment: amt } },
-      })
     }
 
-    const fresh = await prisma.user.findUnique({ where: { id: req.user.id } })
-    const portfolio = { ...(fresh.portfolio || {}) }
-    portfolio[symbol] = Math.max(0, (portfolio[symbol] || 0) + (type === 'buy' ? qty : -qty))
-    const updated = await prisma.user.update({
-      where: { id: req.user.id },
-      data: { portfolio },
-    })
+    if (result.reject) {
+      return res
+        .status(result.reject.status)
+        .json({ success: false, error: result.reject.error })
+    }
 
-    const trade = await prisma.trade.create({
-      data: {
-        userId: req.user.id,
-        symbol,
-        side: type,
-        size: qty,
-        price: px,
-        pnl: 0,
-        source: 'user',
-        time: BigInt(Date.now()),
-      },
-    })
-
-    await prisma.transaction.create({
-      data: {
-        userId: req.user.id,
-        type: 'trade',
-        amount: type === 'buy' ? -amt : amt,
-        balanceBefore: before,
-        balanceAfter: updated.balance,
-        reason: `${type} ${qty} ${symbol} @ ${px}${orderType ? ` (${orderType})` : ''}`,
-        ts: BigInt(Date.now()),
-      },
-    })
-
+    const { updated, trade } = result
     const io = req.app.get('io')
     if (io) {
       io.to('market').emit('trade:executed', toTradeDto(trade))
@@ -299,10 +332,14 @@ router.post('/trading-bots', authenticateToken, requireUser, async (req, res, ne
 
     const list = asArray(req.user.tradingBots)
     list.push(bot)
-    await prisma.user.update({
-      where: { id: req.user.id },
+    // Atomic conditional debit, otherwise two parallel requests could pass the balance check above
+    const debited = await prisma.user.updateMany({
+      where: { id: req.user.id, balance: { gte: inv } },
       data: { balance: { decrement: inv }, tradingBots: list },
     })
+    if (debited.count === 0) {
+      return res.status(400).json({ success: false, error: 'Insufficient balance' })
+    }
     res.json({ success: true, bot })
   } catch (e) {
     next(e)

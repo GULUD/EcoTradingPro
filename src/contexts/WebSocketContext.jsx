@@ -25,13 +25,14 @@ export const WebSocketProvider = ({ children }) => {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
       timeout: 8000,
+      // The server derives the private room from this token; user ids sent by the client are ignored
+      auth: { token: localStorage.getItem('token') || '' },
     })
 
     newSocket.on('connect', () => {
       console.log('[ws] connected')
       setIsConnected(true)
       newSocket.emit('join', 'market')
-      if (user) newSocket.emit('join-user-room', user.id)
     })
 
     newSocket.on('disconnect', () => {
