@@ -33,10 +33,15 @@ async function refreshRolling(coins) {
         return first
       })
     ),
+    // Every user-to-user fill is stored once per side, so summing raw rows doubled
+    // the volume; collapse the mirrored rows the same way the public tape does
     prisma.$queryRaw`
-      SELECT symbol, SUM(size * price) AS volume
-      FROM "Trade"
-      WHERE time >= ${since}
+      SELECT symbol, SUM(price * size) AS volume
+      FROM (
+        SELECT DISTINCT symbol, time, price, size
+        FROM "Trade"
+        WHERE time >= ${since}
+      ) AS unique_trades
       GROUP BY symbol`,
   ])
   for (const first of firstRows) {

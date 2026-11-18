@@ -135,7 +135,7 @@ function Watchlist() {
       })
       fetchPriceAlerts()
     } catch (error) {
-      console.error('[watchlist] alert delete failed', error.message)
+      setNotice(error.response?.data?.error || 'Failed to delete alert')
     }
   }
 
