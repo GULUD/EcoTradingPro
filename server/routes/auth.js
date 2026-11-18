@@ -140,7 +140,9 @@ router.post('/user/login', authLimiter, async (req, res, next) => {
     const acct = accountKey('user', email)
     if (isLocked(pair, PAIR_MAX) || isLocked(acct, ACCOUNT_MAX)) return sendLocked(res)
 
-    const user = await prisma.user.findUnique({ where: { email: String(email).toLowerCase() } })
+    // Registration stores the trimmed lowercase address, so a stray space from
+    // mobile keyboards must not turn a valid login into "invalid credentials"
+    const user = await prisma.user.findUnique({ where: { email: String(email).trim().toLowerCase() } })
     if (!user) {
       recordFailure(pair)
       recordFailure(acct)
@@ -182,7 +184,7 @@ router.post('/admin/login', authLimiter, async (req, res, next) => {
     const acct = accountKey('admin', email)
     if (isLocked(pair, PAIR_MAX) || isLocked(acct, ACCOUNT_MAX)) return sendLocked(res)
 
-    const admin = await prisma.admin.findUnique({ where: { email: String(email).toLowerCase() } })
+    const admin = await prisma.admin.findUnique({ where: { email: String(email).trim().toLowerCase() } })
     if (!admin) {
       recordFailure(pair)
       recordFailure(acct)

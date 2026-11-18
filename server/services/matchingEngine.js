@@ -183,6 +183,9 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size, a
       const fills = []
       const makerUpdates = []
       const tradeRows = []
+      // Only the parties to a fill should be notified; bots and other users must not
+      // flood someone else's notification list with trades they are not part of
+      const participants = new Set([userId])
       // House quotes have no account, so the GULU they pay or receive must be minted or burned
       let supplyDelta = 0
 
@@ -231,6 +234,7 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size, a
         }
 
         makerUpdates.push({ id: level.id, filled: r8(level.filled + fillSize), size: level.size })
+        if (level.userId) participants.add(level.userId)
         tradeRows.push({ userId, side, size: fillSize, price: px })
         if (level.userId && level.userId !== userId) {
           tradeRows.push({ userId: level.userId, side: opposite(side), size: fillSize, price: px })
@@ -337,6 +341,7 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size, a
         fills,
         lastPrice: lastPrice || refPrice,
         change24h,
+        participants: [...participants],
         userIds: [...accounts.keys()],
         accounts: [...accounts.values()].map((a) => ({
           id: a.id,
@@ -369,6 +374,7 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size, a
         size: fill.size,
         price: fill.price,
         time: at,
+        userIds: result.participants,
       })
     })
     io.to('market').emit('orderbook:update', { symbol })

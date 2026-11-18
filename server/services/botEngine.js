@@ -87,6 +87,8 @@ async function step(bot, io) {
     size: visible,
     price: next,
     time: Date.now(),
+    // Bot fills belong to no viewer, so they must not create personal notifications
+    userIds: bot.shadowUserId ? [bot.shadowUserId] : [],
   })
   io.to('market').emit('price:update', {
     prices: [{ symbol: bot.symbol, price: next, change24h }],

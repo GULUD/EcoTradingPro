@@ -91,6 +91,11 @@ export const WebSocketProvider = ({ children }) => {
     })
 
     newSocket.on('trade:executed', (trade) => {
+      // The market room carries every fill, including bot prints. A notification is
+      // personal, so only keep fills this account actually took part in.
+      const me = userRef.current?.id
+      const involved = Array.isArray(trade.userIds) ? trade.userIds : []
+      if (!me || !involved.includes(me)) return
       setNotifications((prev) => [
         {
           // Server ids are unique even when two fills share a millisecond
