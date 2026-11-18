@@ -84,7 +84,16 @@ export const WebSocketProvider = ({ children }) => {
       setMarketData((prev) => {
         const next = { ...prev }
         for (const p of payload.prices || []) {
-          next[`${p.symbol}/GULU`] = { ...(prev[`${p.symbol}/GULU`] || {}), ...p, change: p.change24h }
+          // Partial update payloads (single trade, bot print, admin price) omit volume,
+          // so fall back to the previous value instead of wiping it out
+          const key = `${p.symbol}/GULU`
+          const prior = prev[key] || {}
+          next[key] = {
+            ...prior,
+            ...p,
+            change: p.change24h ?? p.change ?? prior.change,
+            volume: p.volume24h ?? p.volume ?? prior.volume,
+          }
         }
         return next
       })
@@ -133,7 +142,14 @@ export const WebSocketProvider = ({ children }) => {
             setMarketData((prev) => {
               const next = { ...prev }
               for (const p of d.data) {
-                next[`${p.symbol}/GULU`] = { ...(prev[`${p.symbol}/GULU`] || {}), ...p, change: p.change24h }
+                const key = `${p.symbol}/GULU`
+                const prior = next[key] || {}
+                next[key] = {
+                  ...prior,
+                  ...p,
+                  change: p.change24h ?? p.change ?? prior.change,
+                  volume: p.volume24h ?? p.volume ?? prior.volume,
+                }
               }
               return next
             })
