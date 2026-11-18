@@ -12,6 +12,7 @@ function OrderHistory() {
   const [dateRange, setDateRange] = useState('7days')
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     fetchOrderHistory()
@@ -37,6 +38,8 @@ function OrderHistory() {
       setOrders(response.data || [])
     } catch (error) {
       console.error('[history] order fetch failed', error.message)
+      // An empty table reads as "no trades"; surface why it is empty instead
+      setNotice(error.response?.data?.error || 'Could not load order history')
     }
   }
 
@@ -55,6 +58,7 @@ function OrderHistory() {
       setLoading(false)
     } catch (error) {
       console.error('[history] trade fetch failed', error.message)
+      setNotice(error.response?.data?.error || 'Could not load trade history')
       setLoading(false)
     }
   }
@@ -146,6 +150,12 @@ function OrderHistory() {
           </button>
         </div>
       </div>
+
+      {notice && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+          {notice}
+        </div>
+      )}
 
       {/* Controls */}
       <div className="glass rounded-2xl p-6">

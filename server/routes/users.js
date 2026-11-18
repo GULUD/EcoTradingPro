@@ -130,12 +130,16 @@ async function placeStopOrder(req, res, payload) {
   const reference = stopType === 'stop_limit' ? price : triggerPrice * 1.01
   const armed = await prisma.order.findMany({
     where: { userId: user.id, type: { in: ['stop_loss', 'stop_limit'] }, status: 'open' },
-    select: { side: true, size: true, price: true, triggerPrice: true, type: true },
+    select: { symbol: true, side: true, size: true, price: true, triggerPrice: true, type: true },
   })
+  // Balance is a single shared currency, but holdings are per symbol: reserving
+  // another asset's armed sells here rejected valid stop orders outright
   const reservedQuote = armed
     .filter((o) => o.side === 'buy')
     .reduce((sum, o) => sum + o.size * (o.type === 'stop_limit' ? o.price : o.triggerPrice * 1.01), 0)
-  const reservedBase = armed.filter((o) => o.side === 'sell').reduce((sum, o) => sum + o.size, 0)
+  const reservedBase = armed
+    .filter((o) => o.side === 'sell' && o.symbol === symbol)
+    .reduce((sum, o) => sum + o.size, 0)
 
   if (side === 'buy' && user.balance + 1e-9 < reservedQuote + size * reference) {
     return res.status(400).json({ success: false, error: 'insufficient balance for this and armed stop orders' })
