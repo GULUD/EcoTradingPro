@@ -259,8 +259,16 @@ async function executeOrder({ userId, symbol, side, type, price, amount, size, a
         else taker.portfolio[symbol] = r8((Number(taker.portfolio[symbol]) || 0) + remaining)
       }
 
+      // A market order has no limit price, so the row should carry what was actually
+      // paid rather than the worst-price protection bound the hold was based on
+      let orderPrice = worst
+      if (type === 'market' && filled > 0) {
+        const notional = fills.reduce((sum, f) => sum + f.size * f.price, 0)
+        orderPrice = r8(notional / filled)
+      }
+
       const order = await tx.order.create({
-        data: { userId, symbol, side, type, price: worst, size: qty, filled, status },
+        data: { userId, symbol, side, type, price: orderPrice, size: qty, filled, status },
       })
 
       const now = BigInt(Date.now())

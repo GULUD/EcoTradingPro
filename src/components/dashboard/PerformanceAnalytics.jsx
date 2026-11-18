@@ -103,7 +103,11 @@ const PerformanceAnalytics = () => {
     })
     .filter((value) => value !== null)
   const returnsDistribution = {
-    labels: bins.map((bin) => `${bin}%`),
+    // The first bucket starts below -4% and the last one at 5%; the old "-5%" label
+    // described a range the predicate did not use
+    labels: bins.map((bin, index) =>
+      index === 0 ? `< ${bin + 1}%` : index === bins.length - 1 ? `>= ${bin}%` : `${bin}%`
+    ),
     datasets: [
       {
         label: 'Trades',

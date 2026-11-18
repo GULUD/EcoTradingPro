@@ -35,6 +35,17 @@ router.post('/bot-groups', authenticateToken, requireAdmin, (req, res) => {
     if (!MODES.includes(b.mode)) {
       return res.status(400).json({ success: false, message: `invalid mode: ${b.mode}` })
     }
+    // A negative intensity inverts the move, so the bot would walk away from its
+    // target forever; a negative tolerance can never be satisfied and never stops
+    if (!Number.isFinite(b.intensity) || b.intensity <= 0 || b.intensity > 100) {
+      return res.status(400).json({ success: false, message: 'intensity must be between 0 and 100' })
+    }
+    if (!Number.isFinite(b.tolerance) || b.tolerance < 0) {
+      return res.status(400).json({ success: false, message: 'tolerance must be zero or more' })
+    }
+    if (!Number.isFinite(b.counterRate) || b.counterRate < 0 || b.counterRate > 1) {
+      return res.status(400).json({ success: false, message: 'counterRate must be between 0 and 1' })
+    }
   }
   const id = botEngine.startGroup(req.app.get('io'), { ...cfg, bots })
   res.json({ success: true, groupId: id, count: bots.length })
