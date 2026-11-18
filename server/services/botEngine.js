@@ -46,7 +46,11 @@ async function step(bot, io) {
   if (!(qty > 0)) return
   const impact = (up ? 1 : -1) * Math.abs(gap) * 0.02 * intensity * (0.5 + Math.random())
   const noise = ((Math.random() - 0.5) * c.volatility) / 100 * anchor
-  const next = +(anchor * (1 + impact) + noise).toFixed(c.decimals)
+  const raw = anchor * (1 + impact) + noise
+  // A large gap with a high intensity can push the multiplier below zero; a bot
+  // must never write a non-positive price or print a trade at it
+  const floor = +(1 / 10 ** c.decimals).toFixed(c.decimals)
+  const next = +Math.max(floor, raw).toFixed(c.decimals)
 
   const counter = Math.random() < (bot.counterRate ?? 0.2)
   const side = counter ? (up ? 'sell' : 'buy') : up ? 'buy' : 'sell'

@@ -86,7 +86,10 @@ router.post('/prices/batch', authenticateToken, requireAdmin, async (req, res, n
     if (!Array.isArray(items)) {
       return res.status(400).json({ success: false, message: 'items must be an array' })
     }
-    const out = []
+    // Validate the whole batch before writing anything: a delta that fails halfway
+    // would leave earlier coins repriced while the request reports an error, and a
+    // retry would apply the same percentage twice
+    const pending = []
     for (const it of items) {
       const symbol = norm(it.symbol)
       const c = await prisma.marketData.findUnique({ where: { symbol } })
@@ -101,19 +104,34 @@ router.post('/prices/batch', authenticateToken, requireAdmin, async (req, res, n
         return res.status(400).json({ success: false, message: `invalid price for ${symbol}` })
       }
       const open = c.open24h || price
-      const updated = await prisma.marketData.update({
-        where: { symbol },
-        data: {
-          manualPrice: price,
-          price,
-          open24h: open,
-          change24h: +(((price - open) / open) * 100).toFixed(2),
-        },
-      })
-      out.push({ symbol, price: updated.price, change24h: updated.change24h })
+      pending.push({ symbol, price, open, change24h: +(((price - open) / open) * 100).toFixed(2) })
     }
-    req.app.get('io').to('market').emit('price:update', { prices: out, timestamp: Date.now() })
-    res.json({ success: true, count: out.length, items: out })
+
+    const out = pending.length
+      ? await prisma.$transaction(
+          pending.map((u) =>
+            prisma.marketData.update({
+              where: { symbol: u.symbol },
+              data: {
+                manualPrice: u.price,
+                price: u.price,
+                open24h: u.open,
+                change24h: u.change24h,
+              },
+            })
+          )
+        )
+      : []
+
+    req.app.get('io').to('market').emit('price:update', {
+      prices: out.map((u) => ({ symbol: u.symbol, price: u.price, change24h: u.change24h })),
+      timestamp: Date.now(),
+    })
+    res.json({
+      success: true,
+      count: out.length,
+      items: out.map((u) => ({ symbol: u.symbol, price: u.price, change24h: u.change24h })),
+    })
   } catch (e) {
     next(e)
   }
