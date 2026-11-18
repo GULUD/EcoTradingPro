@@ -173,6 +173,60 @@ router.post('/user/login', authLimiter, async (req, res, next) => {
   }
 })
 
+// Single sign-in form for everyone: the same email can only match one table, so
+// whichever credential verifies decides the role of the issued session
+router.post('/login', authLimiter, async (req, res, next) => {
+  try {
+    const { email, password } = req.body
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: 'Email and password are required' })
+    }
+
+    const normalized = String(email).trim().toLowerCase()
+    const pair = pairKey('login', normalized, req.ip)
+    const acct = accountKey('login', normalized)
+    if (isLocked(pair, PAIR_MAX) || isLocked(acct, ACCOUNT_MAX)) return sendLocked(res)
+
+    const user = await prisma.user.findUnique({ where: { email: normalized } })
+    if (user && (await bcrypt.compare(password, user.password))) {
+      if (!user.isActive) {
+        return res.status(401).json({ success: false, error: 'Account has been suspended' })
+      }
+      clearFailures(pair)
+      clearFailures(acct)
+      await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } })
+      return res.json({
+        success: true,
+        token: generateToken(user.id, 'user'),
+        user: publicUser(user),
+        requireChange: user.mustChangePassword,
+      })
+    }
+
+    const admin = await prisma.admin.findUnique({ where: { email: normalized } })
+    if (admin && (await bcrypt.compare(password, admin.password))) {
+      if (!admin.isActive) {
+        return res.status(401).json({ success: false, error: 'Admin account has been suspended' })
+      }
+      clearFailures(pair)
+      clearFailures(acct)
+      await prisma.admin.update({ where: { id: admin.id }, data: { lastLogin: new Date() } })
+      return res.json({
+        success: true,
+        token: generateToken(admin.id, 'admin'),
+        user: publicAdmin(admin),
+        requireChange: admin.mustChangePassword,
+      })
+    }
+
+    recordFailure(pair)
+    recordFailure(acct)
+    res.status(401).json({ success: false, error: 'Invalid credentials' })
+  } catch (error) {
+    next(error)
+  }
+})
+
 router.post('/admin/login', authLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body

@@ -18,10 +18,11 @@ function UserLogin() {
     setLoading(true)
     setError('')
 
-    const result = await login(formData, 'user')
-    
+    const result = await login(formData)
+
     if (result.success) {
-      navigate('/dashboard')
+      if (result.requireChange) navigate('/auth/force-change-password')
+      else navigate(result.role === 'admin' ? '/admin/dashboard' : '/dashboard')
     } else {
       setError(result.error)
     }
@@ -102,9 +103,6 @@ function UserLogin() {
               <Link to="/auth/register" className="text-brand-500 hover:text-brand-600 font-semibold">
                 Create Account
               </Link>
-            </p>
-            <p className="mt-2 text-xs text-gray-500">
-              Admin? <Link to="/auth/admin" className="text-emerald-500 hover:text-emerald-600">Access Admin Panel</Link>
             </p>
           </div>
         </div>

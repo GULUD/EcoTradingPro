@@ -48,10 +48,10 @@ export function AuthProvider({ children }) {
     }
   }
 
-  const login = async (credentials, userType) => {
+  // One endpoint for both roles; the response tells the caller where to land
+  const login = async (credentials) => {
     try {
-      const endpoint = userType === 'admin' ? 'admin/login' : 'user/login'
-      const response = await fetch(`${API_BASE}/api/auth/${endpoint}`, {
+      const response = await fetch(`${API_BASE}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
@@ -61,9 +61,9 @@ export function AuthProvider({ children }) {
 
       if (response.ok && data.success) {
         localStorage.setItem('token', data.token)
-        localStorage.setItem('userType', userType)
+        localStorage.setItem('userType', data.user.role === 'admin' ? 'admin' : 'user')
         setUser(data.user)
-        return { success: true, requireChange: !!data.requireChange }
+        return { success: true, requireChange: !!data.requireChange, role: data.user.role }
       }
       return { success: false, error: data.error || 'Login failed' }
     } catch (error) {

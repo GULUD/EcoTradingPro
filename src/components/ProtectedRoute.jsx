@@ -15,8 +15,7 @@ function ProtectedRoute({ children, requiredRole }) {
   }
 
   if (!user) {
-    const redirectPath = requiredRole === 'admin' ? '/auth/admin' : '/auth/login'
-    return <Navigate to={redirectPath} replace />
+    return <Navigate to="/auth/login" replace />
   }
 
   if (user.requireChange && location.pathname !== '/auth/force-change-password') {

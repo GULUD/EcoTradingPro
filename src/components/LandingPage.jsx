@@ -99,11 +99,8 @@ function LandingPage() {
               </div>
 
               <div className="flex items-center gap-3">
-                <Link to="/auth/login" className="px-4 py-2 rounded-lg border border-brand-500 text-brand-600 hover:bg-brand-500 hover:text-white transition font-medium">
-                  User Login
-                </Link>
-                <Link to="/auth/admin" className="px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition font-semibold">
-                  Admin Access
+                <Link to="/auth/login" className="px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition font-semibold">
+                  Sign In
                 </Link>
                 <button 
                   onClick={toggleTheme}

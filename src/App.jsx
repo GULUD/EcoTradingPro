@@ -6,7 +6,6 @@ import { WebSocketProvider } from './contexts/WebSocketContext'
 import LandingPage from './components/LandingPage'
 import UserLogin from './components/auth/UserLogin'
 import UserRegister from './components/auth/UserRegister'
-import AdminLogin from './components/auth/AdminLogin'
 import ForceChangePassword from './components/auth/ForceChangePassword'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -24,7 +23,8 @@ function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/auth/login" element={<UserLogin />} />
             <Route path="/auth/register" element={<UserRegister />} />
-            <Route path="/auth/admin" element={<AdminLogin />} />
+            {/* Admins sign in through the same form as everyone else */}
+            <Route path="/auth/admin" element={<Navigate to="/auth/login" replace />} />
             <Route
               path="/auth/force-change-password"
               element={

@@ -92,7 +92,7 @@ function ForceChangePassword() {
             type="button"
             onClick={() => {
               logout()
-              navigate(user?.role === 'admin' ? '/auth/admin' : '/auth/login', { replace: true })
+              navigate('/auth/login', { replace: true })
             }}
             className="w-full py-2 rounded-lg border border-gray-300 dark:border-white/10 text-sm"
           >
