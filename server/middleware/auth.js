@@ -20,7 +20,8 @@ async function optionalUser(req, res, next) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
     if (decoded.role === 'user') {
       const user = await prisma.user.findUnique({ where: { id: decoded.id } })
-      if (user && user.isActive) req.user = user
+      // A password change bumps tokenVersion, so older tokens stop personalising responses
+      if (user && user.isActive && (decoded.tv ?? 0) === (user.tokenVersion ?? 0)) req.user = user
     }
   } catch (e) {
     // Invalid token simply means anonymous access
@@ -40,7 +41,7 @@ async function authenticateToken(req, res, next) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] })
     if (decoded.role === 'admin') {
       const admin = await prisma.admin.findUnique({ where: { id: decoded.id } })
-      if (!admin || !admin.isActive) {
+      if (!admin || !admin.isActive || (decoded.tv ?? 0) !== (admin.tokenVersion ?? 0)) {
         return res.status(401).json({ success: false, error: 'Invalid or inactive admin' })
       }
       req.user = admin
@@ -48,7 +49,7 @@ async function authenticateToken(req, res, next) {
       if (admin.mustChangePassword) return rotationGuard(req, res, next)
     } else if (decoded.role === 'user') {
       const user = await prisma.user.findUnique({ where: { id: decoded.id } })
-      if (!user || !user.isActive) {
+      if (!user || !user.isActive || (decoded.tv ?? 0) !== (user.tokenVersion ?? 0)) {
         return res.status(401).json({ success: false, error: 'Invalid or inactive user' })
       }
       req.user = user

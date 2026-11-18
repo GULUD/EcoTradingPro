@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken')
 const rateLimit = require('express-rate-limit')
 const prisma = require('../db')
 const { authenticateToken } = require('../middleware/auth')
+const { passwordProblem } = require('../utils/password')
 
 const router = express.Router()
 
@@ -13,10 +14,10 @@ const authLimiter = rateLimit({
   message: { success: false, error: 'Too many authentication attempts, please try again later.' },
 })
 
-// Two counters: a strict per IP+account ceiling slows one source, while a higher
-// per-account ceiling still stops a botnet without letting a stranger lock the owner out.
-const FAILURE_WINDOW_MS = 60 * 60 * 1000
-const PAIR_MAX = 10
+// Two counters: a strict per IP+account ceiling stops one source quickly, while a
+// higher per-account ceiling still stops a botnet without letting a stranger lock the owner out.
+const FAILURE_WINDOW_MS = 15 * 60 * 1000
+const PAIR_MAX = 5
 const ACCOUNT_MAX = 50
 const loginFailures = new Map()
 
@@ -51,14 +52,29 @@ function recordFailure(key) {
 
 const clearFailures = (key) => loginFailures.delete(key)
 
-const sendLocked = (res) =>
-  res.status(429).json({
-    success: false,
-    error: 'Too many failed attempts for this account, please try again later.',
-  })
+const sendLocked = (res, ...keys) => {
+  const now = Date.now()
+  const remaining = keys.reduce((max, key) => {
+    const record = loginFailures.get(key)
+    if (!record) return max
+    return Math.max(max, record.firstAt + FAILURE_WINDOW_MS - now)
+  }, 0)
+  const retryAfter = Math.max(1, Math.ceil(remaining / 1000))
+  return res
+    .set('Retry-After', String(retryAfter))
+    .status(429)
+    .json({
+      success: false,
+      retryAfter,
+      error: 'Too many failed attempts for this account, please try again later.',
+    })
+}
 
-const generateToken = (id, role) =>
-  jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '7d', algorithm: 'HS256' })
+const generateToken = (id, role, tokenVersion = 0) =>
+  jwt.sign({ id, role, tv: tokenVersion }, process.env.JWT_SECRET, {
+    expiresIn: '7d',
+    algorithm: 'HS256',
+  })
 
 const publicUser = (user) => ({
   id: user.id,
@@ -86,8 +102,9 @@ router.post('/user/register', authLimiter, async (req, res, next) => {
     if (!email || !password || !firstName || !lastName) {
       return res.status(400).json({ success: false, error: 'All fields are required' })
     }
-    if (password.length < 6) {
-      return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' })
+    const problem = passwordProblem(password)
+    if (problem) {
+      return res.status(400).json({ success: false, error: problem })
     }
 
     const normalized = String(email).trim().toLowerCase()
@@ -120,7 +137,7 @@ router.post('/user/register', authLimiter, async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      token: generateToken(user.id, 'user'),
+      token: generateToken(user.id, 'user', user.tokenVersion),
       user: publicUser(user),
       requireChange: false,
     })
@@ -138,7 +155,7 @@ router.post('/user/login', authLimiter, async (req, res, next) => {
 
     const pair = pairKey('user', email, req.ip)
     const acct = accountKey('user', email)
-    if (isLocked(pair, PAIR_MAX) || isLocked(acct, ACCOUNT_MAX)) return sendLocked(res)
+    if (isLocked(pair, PAIR_MAX) || isLocked(acct, ACCOUNT_MAX)) return sendLocked(res, pair, acct)
 
     // Registration stores the trimmed lowercase address, so a stray space from
     // mobile keyboards must not turn a valid login into "invalid credentials"
@@ -164,7 +181,7 @@ router.post('/user/login', authLimiter, async (req, res, next) => {
 
     res.json({
       success: true,
-      token: generateToken(user.id, 'user'),
+      token: generateToken(user.id, 'user', user.tokenVersion),
       user: publicUser(user),
       requireChange: user.mustChangePassword,
     })
@@ -185,7 +202,7 @@ router.post('/login', authLimiter, async (req, res, next) => {
     const normalized = String(email).trim().toLowerCase()
     const pair = pairKey('login', normalized, req.ip)
     const acct = accountKey('login', normalized)
-    if (isLocked(pair, PAIR_MAX) || isLocked(acct, ACCOUNT_MAX)) return sendLocked(res)
+    if (isLocked(pair, PAIR_MAX) || isLocked(acct, ACCOUNT_MAX)) return sendLocked(res, pair, acct)
 
     const user = await prisma.user.findUnique({ where: { email: normalized } })
     if (user && (await bcrypt.compare(password, user.password))) {
@@ -197,7 +214,7 @@ router.post('/login', authLimiter, async (req, res, next) => {
       await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } })
       return res.json({
         success: true,
-        token: generateToken(user.id, 'user'),
+        token: generateToken(user.id, 'user', user.tokenVersion),
         user: publicUser(user),
         requireChange: user.mustChangePassword,
       })
@@ -213,7 +230,7 @@ router.post('/login', authLimiter, async (req, res, next) => {
       await prisma.admin.update({ where: { id: admin.id }, data: { lastLogin: new Date() } })
       return res.json({
         success: true,
-        token: generateToken(admin.id, 'admin'),
+        token: generateToken(admin.id, 'admin', admin.tokenVersion),
         user: publicAdmin(admin),
         requireChange: admin.mustChangePassword,
       })
@@ -236,7 +253,7 @@ router.post('/admin/login', authLimiter, async (req, res, next) => {
 
     const pair = pairKey('admin', email, req.ip)
     const acct = accountKey('admin', email)
-    if (isLocked(pair, PAIR_MAX) || isLocked(acct, ACCOUNT_MAX)) return sendLocked(res)
+    if (isLocked(pair, PAIR_MAX) || isLocked(acct, ACCOUNT_MAX)) return sendLocked(res, pair, acct)
 
     const admin = await prisma.admin.findUnique({ where: { email: String(email).trim().toLowerCase() } })
     if (!admin) {
@@ -260,7 +277,7 @@ router.post('/admin/login', authLimiter, async (req, res, next) => {
 
     res.json({
       success: true,
-      token: generateToken(admin.id, 'admin'),
+      token: generateToken(admin.id, 'admin', admin.tokenVersion),
       user: publicAdmin(admin),
       requireChange: admin.mustChangePassword,
     })
@@ -279,8 +296,17 @@ router.get('/me', authenticateToken, async (req, res) => {
 router.post('/change-password', authLimiter, authenticateToken, async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body
-    if (!currentPassword || !newPassword || String(newPassword).length < 6) {
-      return res.status(400).json({ success: false, error: 'newPassword must be at least 6 characters' })
+    if (!currentPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Current and new password are required' })
+    }
+    const problem = passwordProblem(newPassword)
+    if (problem) {
+      return res.status(400).json({ success: false, error: problem })
+    }
+    if (String(newPassword) === String(currentPassword)) {
+      return res.status(400).json({ success: false, error: 'New password must be different' })
     }
 
     const model = req.userRole === 'admin' ? prisma.admin : prisma.user
@@ -288,11 +314,20 @@ router.post('/change-password', authLimiter, authenticateToken, async (req, res,
       return res.status(401).json({ success: false, error: 'Current password is incorrect' })
     }
 
-    await model.update({
+    const updated = await model.update({
       where: { id: req.user.id },
-      data: { password: await bcrypt.hash(newPassword, 12), mustChangePassword: false },
+      data: {
+        password: await bcrypt.hash(newPassword, 12),
+        mustChangePassword: false,
+        // Old tokens die with the bump, so the caller gets a replacement below
+        tokenVersion: { increment: 1 },
+      },
     })
-    res.json({ success: true, requireChange: false })
+    res.json({
+      success: true,
+      requireChange: false,
+      token: generateToken(req.user.id, req.userRole, updated.tokenVersion),
+    })
   } catch (error) {
     next(error)
   }

@@ -2,6 +2,7 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
+import { passwordProblem } from '../../utils/passwordPolicy'
 
 function UserRegister() {
   const [formData, setFormData] = useState({
@@ -22,6 +23,13 @@ function UserRegister() {
     setLoading(true)
     setError('')
     setSuccess('')
+
+    const problem = passwordProblem(formData.password)
+    if (problem) {
+      setError(problem)
+      setLoading(false)
+      return
+    }
 
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match')
@@ -133,10 +141,13 @@ function UserRegister() {
                 value={formData.password}
                 onChange={handleChange}
                 required
-                minLength="6"
+                minLength="8"
                 className="w-full px-3 py-2 rounded-lg border border-black/10 dark:border-white/10 bg-white/80 dark:bg-white/5 focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                 placeholder="Create a password"
               />
+              <p className="mt-1 text-xs text-gray-500">
+                At least 8 characters, with upper and lower case letters and a number.
+              </p>
             </div>
 
             <div>

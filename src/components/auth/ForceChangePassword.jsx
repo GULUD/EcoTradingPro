@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import api from '../../utils/axios'
+import { passwordProblem } from '../../utils/passwordPolicy'
 
 function ForceChangePassword() {
   const { user, updateUser, logout } = useAuth()
@@ -15,8 +16,9 @@ function ForceChangePassword() {
   const submit = async (e) => {
     e.preventDefault()
     setError('')
-    if (newPassword.length < 6) {
-      setError('The new password must be at least 6 characters')
+    const problem = passwordProblem(newPassword)
+    if (problem) {
+      setError(problem)
       return
     }
     if (newPassword !== confirmPassword) {
@@ -26,7 +28,9 @@ function ForceChangePassword() {
 
     setLoading(true)
     try {
-      await api.post('/api/auth/change-password', { currentPassword, newPassword })
+      const { data } = await api.post('/api/auth/change-password', { currentPassword, newPassword })
+      // The password change invalidates previous tokens, so keep the replacement
+      if (data?.token) localStorage.setItem('token', data.token)
       updateUser({ ...user, requireChange: false })
       navigate(user?.role === 'admin' ? '/admin/dashboard' : '/dashboard', { replace: true })
     } catch (err) {
@@ -70,6 +74,9 @@ function ForceChangePassword() {
               required
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-white/10 bg-white dark:bg-white/5"
             />
+            <p className="mt-1 text-xs text-gray-500">
+              At least 8 characters, with upper and lower case letters and a number.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Confirm new password</label>

@@ -45,6 +45,8 @@ model User {
   balance            Float    @default(0)
   // GULU held in escrow for open P2P orders; kept apart from spendable balance
   locked             Float    @default(0)
+  // Bumped on password change so tokens issued before it stop working
+  tokenVersion       Int      @default(0)
   isActive           Boolean  @default(true)
   mustChangePassword Boolean  @default(false)
   portfolio          Json     @default("{}")
@@ -191,6 +193,8 @@ model Admin {
   isActive           Boolean  @default(true)
   permissions        String[] @default([])
   mustChangePassword Boolean  @default(true)
+  // Bumped on password change so tokens issued before it stop working
+  tokenVersion       Int      @default(0)
   lastLogin          DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
